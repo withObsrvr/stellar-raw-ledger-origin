@@ -1,0 +1,47 @@
+# nebu external-processor descriptor.
+#
+# This is the metadata an external registry consumes so that
+# `nebu install raw-ledger-origin` can build and install the binary.
+# Schema follows nebu's docs/REGISTRY_SPEC.md (the external description.yml
+# v1 format), confirmed against pkg/registry/external.go.
+#
+# INSTALL PATH: nebu's external.ToProcessorEntry() derives the install
+# module path as github.com/<repo.github>/processors/<name>/cmd/<name>.
+# The binary is placed at
+# processors/raw-ledger-origin/cmd/raw-ledger-origin to match exactly, so
+# the default `nebu install raw-ledger-origin` resolves without overrides.
+
+processor:
+  name: raw-ledger-origin
+  type: origin
+  description: Emit raw Stellar LedgerCloseMeta XDR as JSONL events
+  version: 0.1.0
+  language: Go
+  license: Apache-2.0
+  maintainers:
+    - withObsrvr
+
+repo:
+  github: withObsrvr/stellar-raw-ledger-origin
+  ref: v0.1.0
+
+schema:
+  version: v1
+  identifier: nebu.raw_ledger.v1
+  documentation: https://github.com/withObsrvr/stellar-raw-ledger-origin/blob/main/README.md
+
+docs:
+  quick_start: |
+    nebu install raw-ledger-origin
+    raw-ledger-origin --start-ledger 60200000 --end-ledger 60200010 | jq .
+  examples: |
+    # Bounded range over RPC
+    raw-ledger-origin --start-ledger 60200000 --end-ledger 60200010 | jq .
+    # Compose with nebu fetch
+    nebu fetch 60200000 60200010 | raw-ledger-origin | jq .
+  extended_description: |
+    raw-ledger-origin is the nebu-style adapter over a shared raw-ledger
+    core. It marshals each xdr.LedgerCloseMeta to binary XDR and emits a
+    RawLedger event (sequence + ledger_close_meta_xdr + network +
+    closed_at) as JSONL on stdout. The same core backs a flowctl-style
+    raw-ledger-source service so both ecosystems stay in lockstep.

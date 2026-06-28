@@ -1,0 +1,12 @@
+# Build output
+/result
+/bin/
+raw-ledger-origin
+raw-ledger-source
+
+# Go
+*.test
+*.out
+
+# Editor / OS
+.DS_Store

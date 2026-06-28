@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+package stellar.v1;
+
+option go_package = "github.com/withObsrvr/stellar-raw-ledger-origin/gen/stellar/v1;stellarv1";
+
+// RawLedger carries a single Stellar ledger as raw LedgerCloseMeta XDR.
+//
+// WIRE COMPATIBILITY
+//
+// This message intentionally mirrors stellar.v1.RawLedger from
+// github.com/withObsrvr/flow-proto: the proto package (stellar.v1),
+// the message name (RawLedger), and every field number are identical.
+// Bytes produced here therefore decode cleanly against the flowctl
+// ecosystem type, and the fully-qualified type name advertised by both
+// adapters ("stellar.v1.RawLedger") matches.
+//
+// The flow-proto RawLedgerService gRPC definition is deliberately NOT
+// copied here. Keeping this file messages-only is what lets the
+// nebu-style binary stay lean (no gRPC, no flowctl dependency). The
+// raw_ledger_sync_test.go guard fails if these field numbers ever drift
+// from flow-proto.
+message RawLedger {
+  // Ledger sequence number.
+  uint32 sequence = 1;
+
+  // Raw XDR bytes of xdr.LedgerCloseMeta.
+  bytes ledger_close_meta_xdr = 2;
+
+  // Optional: network passphrase the ledger belongs to.
+  string network = 3;
+
+  // Optional: ledger close time as a Unix timestamp (seconds).
+  int64 closed_at = 4;
+}
