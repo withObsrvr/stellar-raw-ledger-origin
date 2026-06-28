@@ -63,11 +63,25 @@ Run them with: `nix shell nixpkgs#gcc --command go test ./...` (or inside
    `github.com/withObsrvr/nebu v0.6.7` (local `replace` removed).
    End-to-end output stamps `_nebu_version: v0.6.7`.
 
+3. **`flake.nix` `vendorHash` — RESOLVED.** Set to
+   `sha256-AqX75cU/I8ECirG2Sw6IIuw79r6mCTk14iHPIgBfV4U=`. `nix build`
+   compiles the binary and it runs. To recompute after a dependency
+   change: set `vendorHash = pkgs.lib.fakeHash`, run `nix build`, and copy
+   the `got:` hash from the mismatch error.
+
+4. **`.gitignore` bug — RESOLVED.** The binary-ignore patterns
+   `raw-ledger-origin` / `raw-ledger-source` were unanchored and matched
+   the identically-named *source* directories under `processors/`, so git
+   silently skipped the binary's source (and `nix build` from the git tree
+   then vendored without nebu, producing a wrong hash). Patterns are now
+   anchored (`/raw-ledger-origin`). Lesson: keep all source files tracked
+   in git before computing a flake `vendorHash`, since flakes build from
+   the git tree.
+
 ## Open issues / decisions for next session
 
-1. **`flake.nix` `vendorHash`.** The `packages.default` build sets
-   `vendorHash = null` as a placeholder; fill it in for `nix build` to
-   work offline/reproducibly.
+1. **Tag the repo `v0.1.0`** so `description.yml`'s `repo.ref` resolves
+   for registry-driven `nebu install`. Nothing else blocks publishing.
 
 ## Milestone 2 readiness (flowctl `raw-ledger-source`)
 
