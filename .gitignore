@@ -1,8 +1,10 @@
 # Build output
 /result
 /bin/
-raw-ledger-origin
-raw-ledger-source
+# Anchored to repo root so they only match built binaries, not the
+# identically-named source dirs under processors/.
+/raw-ledger-origin
+/raw-ledger-source
 
 # Go
 *.test

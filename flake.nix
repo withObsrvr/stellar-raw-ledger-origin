@@ -30,9 +30,7 @@
           version = "0.1.0";
           src = ./.;
           subPackages = [ "processors/raw-ledger-origin/cmd/raw-ledger-origin" ];
-          # Set after the first `go mod tidy`; run with vendorHash = null to
-          # discover the value nix prints, then paste it here.
-          vendorHash = null;
+          vendorHash = "sha256-AqX75cU/I8ECirG2Sw6IIuw79r6mCTk14iHPIgBfV4U=";
         };
       });
     };
