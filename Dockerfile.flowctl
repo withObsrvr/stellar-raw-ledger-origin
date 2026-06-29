@@ -1,0 +1,23 @@
+# Build the flowctl raw-ledger-source service.
+#
+# The source module (./source) consumes the shared core from the parent
+# module via a relative `replace`, so the build context MUST be the repo
+# root (docker build -f Dockerfile.flowctl .), not ./source.
+
+FROM golang:1.26 AS build
+WORKDIR /src
+
+# Copy the whole repo so the source module's `replace => ../` resolves.
+COPY . .
+
+WORKDIR /src/source
+RUN CGO_ENABLED=1 go build -o /out/raw-ledger-source ./cmd/raw-ledger-source
+
+FROM gcr.io/distroless/base-debian12
+COPY --from=build /out/raw-ledger-source /usr/local/bin/raw-ledger-source
+
+# gRPC + health ports (override via GRPC_PORT / HEALTH_PORT).
+EXPOSE 50051 8088
+
+ENV BACKEND_TYPE=RPC
+ENTRYPOINT ["/usr/local/bin/raw-ledger-source"]

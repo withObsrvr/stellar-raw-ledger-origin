@@ -5,7 +5,7 @@
 // All runtime behaviour (flags, stdin/file/RPC input modes,
 // --describe-json, JSONL marshalling, graceful shutdown) comes from
 // nebu's cli.RunProtoOriginCLI helper. This file owns the nebu coupling
-// so the core in internal/rawledger stays adapter-neutral.
+// so the core in the rawledger package stays adapter-neutral.
 //
 // Examples:
 //
@@ -22,7 +22,7 @@ import (
 	"github.com/withObsrvr/nebu/pkg/processor/cli"
 
 	pb "github.com/withObsrvr/stellar-raw-ledger-origin/gen/stellar/v1"
-	"github.com/withObsrvr/stellar-raw-ledger-origin/internal/rawledger"
+	"github.com/withObsrvr/stellar-raw-ledger-origin/rawledger"
 )
 
 // origin adapts the pure rawledger core to nebu's ProtoOriginProcessor

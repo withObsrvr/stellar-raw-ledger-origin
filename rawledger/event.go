@@ -3,10 +3,10 @@
 //
 // This package is the single piece reused by both runtime adapters:
 //
-//	internal/rawledger          <-- you are here (pure conversion)
+//	rawledger                   <-- you are here (pure conversion)
 //	    |
-//	    +-- cmd/raw-ledger-origin   (nebu CLI adapter)
-//	    +-- cmd/raw-ledger-source   (flowctl service adapter, milestone 2)
+//	    +-- processors/raw-ledger-origin   (nebu CLI adapter)
+//	    +-- source/cmd/raw-ledger-source   (flowctl service adapter)
 //
 // It deliberately knows nothing about Cobra, stdout, flowctl, gRPC,
 // health endpoints, or backend selection. It depends only on the
