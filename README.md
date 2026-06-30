@@ -42,8 +42,8 @@ keeps a lean, **messages-only** copy (no gRPC service) so the nebu binary
 stays small and flowctl-free. A guard test
 (`rawledger/raw_ledger_sync_test.go`) fails if the two ever drift.
 
-The flowctl source advertises this same type name (`stellar.v1.RawLedger`)
-and carries the marshalled `RawLedger` as the `Event` payload, so a
+The flowctl source advertises the existing routing type `stellar.ledger.v1`
+and carries the marshalled `stellar.v1.RawLedger` as the `Event` payload, so a
 consumer decoding with flow-proto's type interoperates with both adapters.
 
 ```proto
@@ -104,16 +104,29 @@ go run ./cmd/raw-ledger-source
 
 | Env | Default | Meaning |
 | --- | --- | --- |
-| `BACKEND_TYPE` | `RPC` | `RPC` (wired) · `ARCHIVE` / `CAPTIVE_CORE` (seams) |
+| `BACKEND_TYPE` | `RPC` | `RPC` · `ARCHIVE` · `CAPTIVE_CORE` |
 | `RPC_ENDPOINT` | — | Stellar RPC URL (RPC backend) |
 | `RPC_AUTH_HEADER` | — | optional `Authorization` header |
+| `ARCHIVE_STORAGE_TYPE` | — | `GCS` or `S3` (ARCHIVE backend; `STORAGE_TYPE` fallback) |
+| `ARCHIVE_BUCKET_NAME` | — | archive bucket (ARCHIVE backend; `BUCKET_NAME` fallback) |
+| `ARCHIVE_PATH` | — | optional prefix inside the archive bucket (`BUCKET_PATH` fallback) |
+| `LEDGERS_PER_FILE` / `FILES_PER_PARTITION` | `64` / `10` | archive datastore schema |
+| `BUFFER_SIZE` / `NUM_WORKERS` | `5` / `2` | archive read-ahead and worker count |
+| `AWS_REGION` / `S3_ENDPOINT_URL` | `us-east-1` / — | S3 archive region and optional S3-compatible endpoint |
+| `HISTORY_ARCHIVE_URLS` | — | comma-separated Stellar history archives (CAPTIVE_CORE backend) |
+| `STELLAR_CORE_BINARY_PATH` | — | path to `stellar-core` (CAPTIVE_CORE backend) |
+| `STELLAR_CORE_CONFIG_PATH` | — | optional base stellar-core config file (CAPTIVE_CORE backend) |
+| `CAPTIVE_CORE_STORAGE_PATH` | — | optional captive-core bucket storage base path |
 | `NETWORK_PASSPHRASE` | pubnet | network passphrase stamped on events |
 | `START_LEDGER` / `END_LEDGER` | `0` | default range if a stream omits them (`END_LEDGER=0` = unbounded) |
 | `GRPC_PORT` / `HEALTH_PORT` | `50051` / `8088` | listen ports |
 | `FLOWCTL_ENDPOINT` | — | control plane; registration enabled when set |
+| `FLOWCTL_COMPONENT_ID` / `SOURCE_ID` | `raw-ledger-source` | component id; flowctl-injected `FLOWCTL_COMPONENT_ID` wins |
 
 Container image: `docker build -f Dockerfile.flowctl -t raw-ledger-source .`
-(build context must be the repo root so the `replace => ../` resolves).
+(build context must be the repo root so the `replace => ../` resolves). The
+image follows the flowctl resolver layout: executable at `/app/component` and
+component metadata at `/metadata.json`.
 
 ## Build
 
@@ -130,7 +143,28 @@ make describe # smoke-test --describe-json
 
 # source module (go 1.26)
 cd source && go build ./... && go test ./...
+
+# Nix packages
+nix build .#raw-ledger-origin
+nix build .#raw-ledger-source
+make packaging-check
+
+# flowctl process-driver end-to-end smoke
+# Requires local flowctl, flowctl-sdk, flow-proto checkouts at the default paths
+# or set FLOWCTL_BIN / FLOWCTL_SDK_DIR / FLOW_PROTO_DIR.
+RUN_TIMEOUT=45s scripts/flowctl-process-e2e.sh
+
+# flowctl registry/image resolver smoke for raw-ledger-source@0.1.0
+RUN_TIMEOUT=45s scripts/flowctl-registry-e2e.sh
 ```
+
+The flowctl smokes build `raw-ledger-source`, generate a temporary sink,
+and run `raw-ledger-source -> contract-events-processor -> smoke-sink`
+over testnet RPC. `flowctl run` is long-lived, so a timeout exit is treated
+as success if the sink received at least one event. The registry smoke primes
+flowctl's local OCI cache for `docker.io/withobsrvr/raw-ledger-source:0.1.0`
+and verifies type-reference resolution, image extraction, component caching,
+and metadata-driven config-to-env translation.
 
 Root built against tagged `github.com/withObsrvr/nebu v0.6.7`; source
 against `flowctl-sdk v0.1.1` / `flow-proto v0.1.3`.
@@ -152,5 +186,9 @@ source/                                                flowctl module (go 1.26)
   go.mod                                                  replace => ../ for the shared core
   cmd/raw-ledger-source/                                 flowctl adapter (producer + wiring)
   internal/backend/                                      backend selection (RPC wired)
+scripts/flowctl-process-e2e.sh                         process-driver flowctl smoke test
+scripts/flowctl-registry-e2e.sh                        registry/image resolver flowctl smoke test
+scripts/check-packaging.sh                             version/metadata packaging guard
 Dockerfile.flowctl                                     source container (context = repo root)
+metadata.json                                          flowctl image metadata + config env mappings
 ```

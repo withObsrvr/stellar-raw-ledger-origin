@@ -14,10 +14,22 @@ WORKDIR /src/source
 RUN CGO_ENABLED=1 go build -o /out/raw-ledger-source ./cmd/raw-ledger-source
 
 FROM gcr.io/distroless/base-debian12
-COPY --from=build /out/raw-ledger-source /usr/local/bin/raw-ledger-source
+
+LABEL org.opencontainers.image.title="raw-ledger-source"
+LABEL org.opencontainers.image.version="0.1.0"
+LABEL org.opencontainers.image.source="https://github.com/withObsrvr/stellar-raw-ledger-origin"
+LABEL org.opencontainers.image.description="Flowctl source for raw Stellar ledgers"
+LABEL org.opencontainers.image.licenses="Apache-2.0"
+LABEL io.flowctl.component.type="source"
+LABEL io.flowctl.component.api-version="v1"
+LABEL io.flowctl.component.capabilities="streaming,realtime,stellar"
+
+# flowctl's image resolver extracts a generic executable named `component`.
+COPY --from=build /out/raw-ledger-source /app/component
+COPY metadata.json /metadata.json
 
 # gRPC + health ports (override via GRPC_PORT / HEALTH_PORT).
 EXPOSE 50051 8088
 
 ENV BACKEND_TYPE=RPC
-ENTRYPOINT ["/usr/local/bin/raw-ledger-source"]
+ENTRYPOINT ["/app/component"]

@@ -10,5 +10,8 @@
 *.test
 *.out
 
+# Runtime logs
+/logs/
+
 # Editor / OS
 .DS_Store

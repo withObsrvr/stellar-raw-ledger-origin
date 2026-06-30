@@ -17,10 +17,10 @@ import (
 	"github.com/withObsrvr/stellar-raw-ledger-origin/source/internal/backend"
 )
 
-// rawLedgerEventType is the fully-qualified proto name advertised to
-// flowctl. It matches the RawLedger message name, so consumers decoding
-// with flow-proto's stellar.v1.RawLedger interoperate.
-const rawLedgerEventType = "stellar.v1.RawLedger"
+// rawLedgerEventType is the flowctl routing type for raw Stellar ledgers.
+// Existing flowctl Stellar processors consume this event type and decode
+// the payload as flow-proto's stellar.v1.RawLedger protobuf message.
+const rawLedgerEventType = "stellar.ledger.v1"
 
 // ledgerRange is the parsed [start, end] window. end == 0 means unbounded.
 type ledgerRange struct {

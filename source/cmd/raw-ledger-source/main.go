@@ -10,16 +10,30 @@
 //
 // Configuration (environment):
 //
-//	BACKEND_TYPE        RPC | ARCHIVE | CAPTIVE_CORE (default RPC)
-//	RPC_ENDPOINT        Stellar RPC URL (RPC backend)
-//	RPC_AUTH_HEADER     optional Authorization header
-//	NETWORK_PASSPHRASE  network passphrase (default pubnet)
+//	BACKEND_TYPE          RPC | ARCHIVE | CAPTIVE_CORE (default RPC)
+//	RPC_ENDPOINT          Stellar RPC URL (RPC backend)
+//	RPC_AUTH_HEADER       optional Authorization header
+//	ARCHIVE_STORAGE_TYPE  GCS | S3 (ARCHIVE backend)
+//	ARCHIVE_BUCKET_NAME   archive bucket name (ARCHIVE backend)
+//	ARCHIVE_PATH          optional archive prefix inside bucket
+//	LEDGERS_PER_FILE      archive schema ledgers per file (default 64)
+//	FILES_PER_PARTITION   archive schema files per partition (default 10)
+//	BUFFER_SIZE           archive read-ahead buffer size (default 5)
+//	NUM_WORKERS           archive worker count (default 2)
+//	AWS_REGION            S3 region (default us-east-1)
+//	S3_ENDPOINT_URL       optional S3-compatible endpoint URL
+//	HISTORY_ARCHIVE_URLS  comma-separated archive URLs (CAPTIVE_CORE backend)
+//	STELLAR_CORE_BINARY_PATH stellar-core binary path (CAPTIVE_CORE backend)
+//	STELLAR_CORE_CONFIG_PATH optional base stellar-core config file (CAPTIVE_CORE backend)
+//	CAPTIVE_CORE_STORAGE_PATH optional bucket storage base path (CAPTIVE_CORE backend)
+//	NETWORK_PASSPHRASE    network passphrase (default pubnet)
 //	START_LEDGER        default start ledger if a stream omits start_ledger
 //	END_LEDGER          default end ledger (0 = unbounded)
 //	GRPC_PORT           gRPC listen port (default 50051)
 //	HEALTH_PORT         health endpoint port (default 8088)
-//	FLOWCTL_ENDPOINT    control plane address; if set, registration is enabled
-//	SOURCE_ID           component id (default raw-ledger-source)
+//	FLOWCTL_ENDPOINT      control plane address; if set, registration is enabled
+//	FLOWCTL_COMPONENT_ID  flowctl-assigned component id (preferred)
+//	SOURCE_ID             component id fallback (default raw-ledger-source)
 package main
 
 import (
@@ -45,7 +59,7 @@ func main() {
 	defEnd := envUint32("END_LEDGER", 0)
 
 	cfg := source.DefaultConfig()
-	cfg.ID = envOr("SOURCE_ID", "raw-ledger-source")
+	cfg.ID = componentIDFromEnv()
 	cfg.Name = "raw-ledger-source"
 	cfg.Description = "Streams raw Stellar ledgers (stellar.v1.RawLedger) from a configurable backend"
 	cfg.Version = version
@@ -90,6 +104,13 @@ func envOr(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+func componentIDFromEnv() string {
+	// flowctl injects FLOWCTL_COMPONENT_ID from the pipeline component id.
+	// Prefer it so the control plane sees the id it is waiting for; SOURCE_ID
+	// remains a standalone/local fallback.
+	return envOr("FLOWCTL_COMPONENT_ID", envOr("SOURCE_ID", "raw-ledger-source"))
 }
 
 func envUint32(key string, fallback uint32) uint32 {

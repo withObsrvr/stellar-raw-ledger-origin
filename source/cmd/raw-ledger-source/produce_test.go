@@ -8,6 +8,29 @@ import (
 	pb "github.com/withObsrvr/stellar-raw-ledger-origin/gen/stellar/v1"
 )
 
+func TestComponentIDFromEnv(t *testing.T) {
+	t.Run("flowctl component id wins", func(t *testing.T) {
+		t.Setenv("FLOWCTL_COMPONENT_ID", "stellar-source")
+		t.Setenv("SOURCE_ID", "raw-ledger-source")
+		if got := componentIDFromEnv(); got != "stellar-source" {
+			t.Fatalf("componentIDFromEnv() = %q, want %q", got, "stellar-source")
+		}
+	})
+
+	t.Run("source id fallback", func(t *testing.T) {
+		t.Setenv("SOURCE_ID", "local-source")
+		if got := componentIDFromEnv(); got != "local-source" {
+			t.Fatalf("componentIDFromEnv() = %q, want %q", got, "local-source")
+		}
+	})
+
+	t.Run("default fallback", func(t *testing.T) {
+		if got := componentIDFromEnv(); got != "raw-ledger-source" {
+			t.Fatalf("componentIDFromEnv() = %q, want %q", got, "raw-ledger-source")
+		}
+	})
+}
+
 func TestRangeFromParams(t *testing.T) {
 	tests := []struct {
 		name              string
@@ -43,7 +66,7 @@ func TestRangeFromParams(t *testing.T) {
 }
 
 // TestToEvent verifies the flowctl envelope wraps a decodable RawLedger
-// payload and advertises the shared schema-identity type name.
+// payload and advertises the flowctl routing type.
 func TestToEvent(t *testing.T) {
 	raw := &pb.RawLedger{
 		Sequence:           60200000,

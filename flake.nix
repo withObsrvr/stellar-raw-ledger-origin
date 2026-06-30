@@ -24,14 +24,30 @@
       });
 
       # `nix build` -> the nebu-style origin binary.
-      packages = forAllSystems (pkgs: {
-        default = pkgs.buildGoModule {
-          pname = "raw-ledger-origin";
+      # `nix build .#raw-ledger-source` -> the flowctl source service.
+      packages = forAllSystems (pkgs:
+        let
           version = "0.1.0";
-          src = ./.;
-          subPackages = [ "processors/raw-ledger-origin/cmd/raw-ledger-origin" ];
-          vendorHash = "sha256-AqX75cU/I8ECirG2Sw6IIuw79r6mCTk14iHPIgBfV4U=";
-        };
-      });
+        in
+        rec {
+          raw-ledger-origin = pkgs.buildGoModule {
+            pname = "raw-ledger-origin";
+            inherit version;
+            src = ./.;
+            subPackages = [ "processors/raw-ledger-origin/cmd/raw-ledger-origin" ];
+            vendorHash = "sha256-AqX75cU/I8ECirG2Sw6IIuw79r6mCTk14iHPIgBfV4U=";
+          };
+
+          raw-ledger-source = pkgs.buildGoModule {
+            pname = "raw-ledger-source";
+            inherit version;
+            src = ./.;
+            modRoot = "source";
+            subPackages = [ "cmd/raw-ledger-source" ];
+            vendorHash = "sha256-B8mA8Gqf/vqGW6k7mKLh1iO+yQnR8AKvk0ECGkAkCwM=";
+          };
+
+          default = raw-ledger-origin;
+        });
     };
 }
