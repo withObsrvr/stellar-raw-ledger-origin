@@ -20,6 +20,10 @@
             pkgs.protoc-gen-go
             pkgs.gnumake
           ];
+
+          shellHook = ''
+            export PS1="(stellar-raw-ledger-origin) $PS1"
+          '';
         };
       });
 
