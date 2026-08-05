@@ -1,6 +1,7 @@
 package rawledger
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/stellar/go-stellar-sdk/xdr"
@@ -80,5 +81,40 @@ func TestToRawLedger_EmptyPassphraseAllowed(t *testing.T) {
 	}
 	if ev.GetNetwork() != "" {
 		t.Errorf("Network = %q, want empty", ev.GetNetwork())
+	}
+}
+
+func TestFromXDR_PopulatesFieldsWithoutChangingBytes(t *testing.T) {
+	const (
+		sequence   = uint32(60200000)
+		closeTime  = uint64(1700000000)
+		passphrase = "Public Global Stellar Network ; September 2015"
+	)
+	ledgerXDR, err := fixtureLedger(sequence, closeTime).MarshalBinary()
+	if err != nil {
+		t.Fatalf("marshal fixture: %v", err)
+	}
+
+	event, err := FromXDR(ledgerXDR, passphrase)
+	if err != nil {
+		t.Fatalf("FromXDR returned error: %v", err)
+	}
+	if event.GetSequence() != sequence {
+		t.Errorf("Sequence = %d, want %d", event.GetSequence(), sequence)
+	}
+	if event.GetClosedAt() != int64(closeTime) {
+		t.Errorf("ClosedAt = %d, want %d", event.GetClosedAt(), closeTime)
+	}
+	if event.GetNetwork() != passphrase {
+		t.Errorf("Network = %q, want %q", event.GetNetwork(), passphrase)
+	}
+	if !bytes.Equal(event.GetLedgerCloseMetaXdr(), ledgerXDR) {
+		t.Fatal("LedgerCloseMetaXdr differs from the source bytes")
+	}
+}
+
+func TestFromXDR_RejectsMalformedLedger(t *testing.T) {
+	if _, err := FromXDR([]byte{0, 0, 0}, ""); err == nil {
+		t.Fatal("expected malformed XDR error")
 	}
 }

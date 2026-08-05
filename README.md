@@ -2,20 +2,25 @@
 
 One raw-ledger core, two runtime adapters.
 
-A small, adapter-neutral core converts a Stellar `xdr.LedgerCloseMeta`
-into a `RawLedger` event. Two thin adapters wrap that core:
+A small, adapter-neutral core converts a parsed Stellar
+`xdr.LedgerCloseMeta` or canonical LedgerCloseMeta XDR into a `RawLedger`
+event. Two thin adapters wrap that core:
 
 | Binary | Style | Status |
 | --- | --- | --- |
 | `raw-ledger-origin` | nebu CLI processor — emits JSONL on stdout, Unix-pipe composable | **Done (M1)** |
-| `raw-ledger-source` | flowctl source service — registration, health, heartbeats, gRPC | **Done (M2, RPC backend)** |
+| `raw-ledger-source` | flowctl source service — registration, health, heartbeats, gRPC | **Done (RPC, archive, and captive-core streams)** |
+| `ledger-stream-bench` | acquisition-only throughput and correctness benchmark | **Done** |
 
 ```
-                  rawledger  (pure: LedgerCloseMeta -> RawLedger)
-                     │
-        ┌────────────┴────────────┐
-   raw-ledger-origin        raw-ledger-source
-   (nebu CLI adapter)       (flowctl service)
+                rawledger  (LedgerCloseMeta/XDR -> RawLedger)
+                    │
+       ┌────────────┴────────────┐
+  raw-ledger-origin        raw-ledger-source
+  (nebu CLI adapter)       (flowctl service)
+                                  │
+                             ledgerstream
+                         (SDK LedgerStream factory)
 ```
 
 The core owns **event correctness**; the adapters own **runtime
@@ -110,7 +115,7 @@ go run ./cmd/raw-ledger-source
 | `ARCHIVE_STORAGE_TYPE` | — | `GCS` or `S3` (ARCHIVE backend; `STORAGE_TYPE` fallback) |
 | `ARCHIVE_BUCKET_NAME` | — | archive bucket (ARCHIVE backend; `BUCKET_NAME` fallback) |
 | `ARCHIVE_PATH` | — | optional prefix inside the archive bucket (`BUCKET_PATH` fallback) |
-| `LEDGERS_PER_FILE` / `FILES_PER_PARTITION` | `64` / `10` | archive datastore schema |
+| `LEDGERS_PER_FILE` / `FILES_PER_PARTITION` | `1` / `64000` | archive datastore schema; values are checked against the remote manifest when present |
 | `BUFFER_SIZE` / `NUM_WORKERS` | `5` / `2` | archive read-ahead and worker count |
 | `AWS_REGION` / `S3_ENDPOINT_URL` | `us-east-1` / — | S3 archive region and optional S3-compatible endpoint |
 | `HISTORY_ARCHIVE_URLS` | — | comma-separated Stellar history archives (CAPTIVE_CORE backend) |
@@ -127,6 +132,34 @@ Container image: `docker build -f Dockerfile.flowctl -t raw-ledger-source .`
 (build context must be the repo root so the `replace => ../` resolves). The
 image follows the flowctl resolver layout: executable at `/app/component` and
 component metadata at `/metadata.json`.
+
+### Acquisition benchmark
+
+`ledger-stream-bench` measures only raw archive/RPC/captive-core acquisition.
+It verifies the exact ledger sequence and reports ledger and byte throughput as
+JSON, without extraction, protobuf expansion, or persistence in the measured
+interval.
+
+```bash
+cd source
+BACKEND_TYPE=ARCHIVE \
+ARCHIVE_STORAGE_TYPE=S3 \
+ARCHIVE_BUCKET_NAME=aws-public-blockchain \
+ARCHIVE_PATH=v1.1/stellar/ledgers/pubnet \
+AWS_REGION=us-east-2 \
+BUFFER_SIZE=1000 \
+NUM_WORKERS=50 \
+go run ./cmd/ledger-stream-bench \
+  --start-ledger 62080000 \
+  --end-ledger 62080999
+```
+
+For the production acquisition gate, sweep `NUM_WORKERS` and `BUFFER_SIZE`
+rather than assuming the example values are optimal. The command defaults to
+one ledger per object and 64,000 objects per path partition.
+
+The first 1,000-ledger mainnet result and its interpretation are recorded in
+[`docs/ledger-stream-benchmark-2026-08-05.md`](docs/ledger-stream-benchmark-2026-08-05.md).
 
 ## Build
 
@@ -166,8 +199,10 @@ flowctl's local OCI cache for `docker.io/withobsrvr/raw-ledger-source:0.1.0`
 and verifies type-reference resolution, image extraction, component caching,
 and metadata-driven config-to-env translation.
 
-Root built against tagged `github.com/withObsrvr/nebu v0.6.7`; source
-against `flowctl-sdk v0.1.1` / `flow-proto v0.1.3`.
+Root is built against tagged `github.com/withObsrvr/nebu v0.6.7`; source is
+built against `flowctl-sdk v0.1.1` / `flow-proto v0.1.3`. Both modules pin
+`go-stellar-sdk v0.7.1`; the stream and XDR-view APIs are kept behind this
+repository's small public boundary while those SDK APIs remain experimental.
 
 ## Layout
 
@@ -178,14 +213,15 @@ matches the module path nebu's external registry derives for
 ```
 proto/stellar/v1/raw_ledger.proto                      canonical (messages-only) schema
 gen/stellar/v1/raw_ledger.pb.go                        generated; committed for convenience
-rawledger/                                             shared core: ToRawLedger + guard tests
+rawledger/                                             shared core: parsed and raw-XDR conversion + guard tests
 processors/raw-ledger-origin/cmd/raw-ledger-origin/    nebu CLI adapter (owns nebu coupling)
 description.yml                                         nebu external-registry descriptor
 flake.nix / Makefile                                   reproducible build + codegen (root)
 source/                                                flowctl module (go 1.26)
   go.mod                                                  replace => ../ for the shared core
   cmd/raw-ledger-source/                                 flowctl adapter (producer + wiring)
-  internal/backend/                                      backend selection (RPC wired)
+  cmd/ledger-stream-bench/                               acquisition-only performance gate
+  ledgerstream/                                          public SDK LedgerStream configuration/factory
 scripts/flowctl-process-e2e.sh                         process-driver flowctl smoke test
 scripts/flowctl-registry-e2e.sh                        registry/image resolver flowctl smoke test
 scripts/check-packaging.sh                             version/metadata packaging guard

@@ -1,11 +1,17 @@
 package main
 
 import (
+	"context"
+	"iter"
 	"testing"
 
+	"github.com/stellar/go-stellar-sdk/ingest/ledgerbackend"
+	"github.com/stellar/go-stellar-sdk/xdr"
+	flowctlv1 "github.com/withObsrvr/flow-proto/go/gen/flowctl/v1"
 	"google.golang.org/protobuf/proto"
 
 	pb "github.com/withObsrvr/stellar-raw-ledger-origin/gen/stellar/v1"
+	"github.com/withObsrvr/stellar-raw-ledger-origin/source/ledgerstream"
 )
 
 func TestComponentIDFromEnv(t *testing.T) {
@@ -33,11 +39,11 @@ func TestComponentIDFromEnv(t *testing.T) {
 
 func TestRangeFromParams(t *testing.T) {
 	tests := []struct {
-		name              string
-		params            map[string]string
-		defStart, defEnd  uint32
+		name               string
+		params             map[string]string
+		defStart, defEnd   uint32
 		wantStart, wantEnd uint32
-		wantErr           bool
+		wantErr            bool
 	}{
 		{"params override defaults", map[string]string{"start_ledger": "100", "end_ledger": "200"}, 1, 2, 100, 200, false},
 		{"fall back to defaults", nil, 50, 0, 50, 0, false},
@@ -97,4 +103,93 @@ func TestToEvent(t *testing.T) {
 	if !proto.Equal(raw, &decoded) {
 		t.Errorf("decoded payload != original\n got: %v\nwant: %v", &decoded, raw)
 	}
+}
+
+func TestProducerConsumesBorrowedRawXDRBeforeAdvancing(t *testing.T) {
+	ledgers := [][]byte{
+		sourceFixtureLedgerXDR(t, 100, 1700000000),
+		sourceFixtureLedgerXDR(t, 101, 1700000005),
+	}
+	factory := func(cfg ledgerstream.Config) (ledgerbackend.LedgerStream, error) {
+		if cfg.Type != ledgerstream.TypeArchive {
+			t.Errorf("stream config Type = %q, want %q", cfg.Type, ledgerstream.TypeArchive)
+		}
+		return reusedBufferStream{ledgers: ledgers}, nil
+	}
+	producer := newProducerWithFactory(
+		ledgerstream.Config{Type: ledgerstream.TypeArchive},
+		"Public Global Stellar Network ; September 2015",
+		"raw-ledger-source",
+		0,
+		0,
+		factory,
+	)
+	events, err := producer(context.Background(), &flowctlv1.StreamRequest{Params: map[string]string{
+		"start_ledger": "100",
+		"end_ledger":   "101",
+	}})
+	if err != nil {
+		t.Fatalf("produce returned error: %v", err)
+	}
+
+	var sequences []uint32
+	for event := range events {
+		var raw pb.RawLedger
+		if err := proto.Unmarshal(event.GetPayload(), &raw); err != nil {
+			t.Fatalf("decode event payload: %v", err)
+		}
+		var ledger xdr.LedgerCloseMeta
+		if err := ledger.UnmarshalBinary(raw.GetLedgerCloseMetaXdr()); err != nil {
+			t.Fatalf("decode ledger XDR: %v", err)
+		}
+		if raw.GetSequence() != ledger.LedgerSequence() {
+			t.Fatalf("RawLedger sequence %d != XDR sequence %d", raw.GetSequence(), ledger.LedgerSequence())
+		}
+		sequences = append(sequences, raw.GetSequence())
+	}
+	if len(sequences) != 2 || sequences[0] != 100 || sequences[1] != 101 {
+		t.Fatalf("sequences = %v, want [100 101]", sequences)
+	}
+}
+
+type reusedBufferStream struct {
+	ledgers [][]byte
+}
+
+func (stream reusedBufferStream) RawLedgers(context.Context, ledgerbackend.Range, ...ledgerbackend.StreamOption) iter.Seq2[[]byte, error] {
+	return func(yield func([]byte, error) bool) {
+		var capacity int
+		for _, ledger := range stream.ledgers {
+			if len(ledger) > capacity {
+				capacity = len(ledger)
+			}
+		}
+		borrowed := make([]byte, capacity)
+		for _, ledger := range stream.ledgers {
+			copy(borrowed, ledger)
+			if !yield(borrowed[:len(ledger)], nil) {
+				return
+			}
+		}
+	}
+}
+
+func sourceFixtureLedgerXDR(t *testing.T, sequence uint32, closeTime uint64) []byte {
+	t.Helper()
+	ledger := xdr.LedgerCloseMeta{
+		V: 0,
+		V0: &xdr.LedgerCloseMetaV0{
+			LedgerHeader: xdr.LedgerHeaderHistoryEntry{
+				Header: xdr.LedgerHeader{
+					LedgerSeq: xdr.Uint32(sequence),
+					ScpValue:  xdr.StellarValue{CloseTime: xdr.TimePoint(closeTime)},
+				},
+			},
+		},
+	}
+	ledgerXDR, err := ledger.MarshalBinary()
+	if err != nil {
+		t.Fatalf("marshal fixture ledger: %v", err)
+	}
+	return ledgerXDR
 }

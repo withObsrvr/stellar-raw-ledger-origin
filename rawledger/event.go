@@ -1,5 +1,6 @@
 // Package rawledger is the shared, adapter-neutral core that converts a
-// Stellar xdr.LedgerCloseMeta into a RawLedger event.
+// Stellar LedgerCloseMeta, parsed or in canonical XDR form, into a RawLedger
+// event.
 //
 // This package is the single piece reused by both runtime adapters:
 //
@@ -44,5 +45,34 @@ func ToRawLedger(ledger xdr.LedgerCloseMeta, networkPassphrase string) (*pb.RawL
 		LedgerCloseMetaXdr: xdrBytes,
 		Network:            networkPassphrase,
 		ClosedAt:           ledger.LedgerCloseTime(),
+	}, nil
+}
+
+// FromXDR builds a RawLedger directly from canonical LedgerCloseMeta XDR.
+// It reads only the sequence and close time through LedgerCloseMetaView and
+// does not fully decode or re-marshal the ledger.
+//
+// The returned RawLedger borrows ledgerXDR. Callers must marshal or otherwise
+// finish consuming the message before advancing a ledgerbackend.LedgerStream,
+// whose yielded byte slice is valid only until the next iteration step.
+func FromXDR(ledgerXDR []byte, networkPassphrase string) (*pb.RawLedger, error) {
+	view := xdr.LedgerCloseMetaView(ledgerXDR)
+	if err := view.ValidateFull(); err != nil {
+		return nil, fmt.Errorf("validate ledger XDR: %w", err)
+	}
+	sequence, err := view.LedgerSequence()
+	if err != nil {
+		return nil, fmt.Errorf("read ledger sequence from XDR: %w", err)
+	}
+	closeTime, err := view.LedgerCloseTime()
+	if err != nil {
+		return nil, fmt.Errorf("read ledger %d close time from XDR: %w", sequence, err)
+	}
+
+	return &pb.RawLedger{
+		Sequence:           sequence,
+		LedgerCloseMetaXdr: ledgerXDR,
+		Network:            networkPassphrase,
+		ClosedAt:           closeTime,
 	}, nil
 }

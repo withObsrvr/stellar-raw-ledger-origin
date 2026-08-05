@@ -14,7 +14,7 @@ import (
 
 	pb "github.com/withObsrvr/stellar-raw-ledger-origin/gen/stellar/v1"
 	"github.com/withObsrvr/stellar-raw-ledger-origin/rawledger"
-	"github.com/withObsrvr/stellar-raw-ledger-origin/source/internal/backend"
+	"github.com/withObsrvr/stellar-raw-ledger-origin/source/ledgerstream"
 )
 
 // rawLedgerEventType is the flowctl routing type for raw Stellar ledgers.
@@ -76,10 +76,23 @@ func toEvent(raw *pb.RawLedger, componentID string) (*flowctlv1.Event, error) {
 	}, nil
 }
 
-// newProducer returns the flowctl producer. Each stream gets its own
-// backend instance, prepared for the requested range, drained ledger by
-// ledger through the shared rawledger core, and emitted as flowctl Events.
-func newProducer(beCfg backend.Config, networkPassphrase, componentID string, defStart, defEnd uint32) source.ProducerFunc {
+// newProducer returns the flowctl producer. Each request consumes its range
+// through a LedgerStream, converts the borrowed XDR with zero-copy views, and
+// marshals it into a self-contained flowctl Event before advancing the stream.
+func newProducer(streamCfg ledgerstream.Config, networkPassphrase, componentID string, defStart, defEnd uint32) source.ProducerFunc {
+	return newProducerWithFactory(streamCfg, networkPassphrase, componentID, defStart, defEnd, ledgerstream.New)
+}
+
+type ledgerStreamFactory func(ledgerstream.Config) (ledgerbackend.LedgerStream, error)
+
+func newProducerWithFactory(
+	streamCfg ledgerstream.Config,
+	networkPassphrase string,
+	componentID string,
+	defStart uint32,
+	defEnd uint32,
+	newStream ledgerStreamFactory,
+) source.ProducerFunc {
 	return func(ctx context.Context, req *flowctlv1.StreamRequest) (<-chan *flowctlv1.Event, error) {
 		var params map[string]string
 		if req != nil {
@@ -90,46 +103,45 @@ func newProducer(beCfg backend.Config, networkPassphrase, componentID string, de
 			return nil, err
 		}
 
-		be, err := backend.New(beCfg)
+		stream, err := newStream(streamCfg)
 		if err != nil {
 			return nil, err
 		}
 
-		var prepRange ledgerbackend.Range
+		var requestedRange ledgerbackend.Range
 		if lr.end == 0 {
-			prepRange = ledgerbackend.UnboundedRange(lr.start)
+			requestedRange = ledgerbackend.UnboundedRange(lr.start)
 		} else {
-			prepRange = ledgerbackend.BoundedRange(lr.start, lr.end)
-		}
-		if err := be.PrepareRange(ctx, prepRange); err != nil {
-			be.Close()
-			return nil, fmt.Errorf("prepare range [%d,%d]: %w", lr.start, lr.end, err)
+			requestedRange = ledgerbackend.BoundedRange(lr.start, lr.end)
 		}
 
 		out := make(chan *flowctlv1.Event, 100)
 		go func() {
 			defer close(out)
-			defer be.Close()
 
-			for seq := lr.start; lr.end == 0 || seq <= lr.end; seq++ {
-				lcm, err := be.GetLedger(ctx, seq)
-				if err != nil {
+			expectedSequence := lr.start
+			for ledgerXDR, streamErr := range stream.RawLedgers(ctx, requestedRange) {
+				if streamErr != nil {
 					if ctx.Err() != nil {
 						return // consumer disconnected / shutdown
 					}
-					log.Printf("get ledger %d: %v", seq, err)
+					log.Printf("stream ledger %d: %v", expectedSequence, streamErr)
 					return
 				}
 
-				raw, err := rawledger.ToRawLedger(lcm, networkPassphrase)
+				raw, err := rawledger.FromXDR(ledgerXDR, networkPassphrase)
 				if err != nil {
-					log.Printf("convert ledger %d: %v", seq, err)
-					continue
+					log.Printf("convert ledger %d: %v", expectedSequence, err)
+					return
+				}
+				if raw.GetSequence() != expectedSequence {
+					log.Printf("stream sequence mismatch: got %d, want %d", raw.GetSequence(), expectedSequence)
+					return
 				}
 				ev, err := toEvent(raw, componentID)
 				if err != nil {
-					log.Printf("encode ledger %d: %v", seq, err)
-					continue
+					log.Printf("encode ledger %d: %v", expectedSequence, err)
+					return
 				}
 
 				select {
@@ -137,6 +149,7 @@ func newProducer(beCfg backend.Config, networkPassphrase, componentID string, de
 					return
 				case out <- ev:
 				}
+				expectedSequence++
 			}
 		}()
 

@@ -3,7 +3,7 @@ module github.com/withObsrvr/stellar-raw-ledger-origin/source
 go 1.26.1
 
 require (
-	github.com/stellar/go-stellar-sdk v0.5.0
+	github.com/stellar/go-stellar-sdk v0.7.1
 	github.com/withObsrvr/flow-proto v0.1.3
 	github.com/withObsrvr/flowctl-sdk v0.1.1
 	github.com/withObsrvr/stellar-raw-ledger-origin v0.2.0
@@ -77,7 +77,7 @@ require (
 	github.com/segmentio/go-loggly v0.5.1-0.20171222203950-eb91657e62b2 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/spiffe/go-spiffe/v2 v2.6.0 // indirect
-	github.com/stellar/go-xdr v0.0.0-20260312225820-cc2b0611aabf // indirect
+	github.com/stellar/go-xdr v0.0.0-20260529210834-0bf8f4956364 // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
 	github.com/stretchr/testify v1.11.1 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
