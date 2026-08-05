@@ -16,8 +16,8 @@
 //	ARCHIVE_STORAGE_TYPE  GCS | S3 (ARCHIVE backend)
 //	ARCHIVE_BUCKET_NAME   archive bucket name (ARCHIVE backend)
 //	ARCHIVE_PATH          optional archive prefix inside bucket
-//	LEDGERS_PER_FILE      archive schema ledgers per file (default 64)
-//	FILES_PER_PARTITION   archive schema files per partition (default 10)
+//	LEDGERS_PER_FILE      archive schema ledgers per file (default 1)
+//	FILES_PER_PARTITION   archive schema files per partition (default 64000)
 //	BUFFER_SIZE           archive read-ahead buffer size (default 5)
 //	NUM_WORKERS           archive worker count (default 2)
 //	AWS_REGION            S3 region (default us-east-1)
@@ -44,17 +44,15 @@ import (
 	"strconv"
 	"syscall"
 
-	"github.com/stellar/go-stellar-sdk/network"
 	"github.com/withObsrvr/flowctl-sdk/pkg/source"
 
-	"github.com/withObsrvr/stellar-raw-ledger-origin/source/internal/backend"
+	"github.com/withObsrvr/stellar-raw-ledger-origin/source/ledgerstream"
 )
 
 const version = "0.1.0"
 
 func main() {
-	networkPassphrase := envOr("NETWORK_PASSPHRASE", network.PublicNetworkPassphrase)
-	beCfg := backend.ConfigFromEnv()
+	streamCfg := ledgerstream.ConfigFromEnv()
 	defStart := envUint32("START_LEDGER", 0)
 	defEnd := envUint32("END_LEDGER", 0)
 
@@ -79,7 +77,7 @@ func main() {
 		log.Fatalf("create source: %v", err)
 	}
 
-	if err := src.OnProduce(newProducer(beCfg, networkPassphrase, cfg.ID, defStart, defEnd)); err != nil {
+	if err := src.OnProduce(newProducer(streamCfg, streamCfg.NetworkPassphrase, cfg.ID, defStart, defEnd)); err != nil {
 		log.Fatalf("register producer: %v", err)
 	}
 
@@ -90,7 +88,7 @@ func main() {
 		log.Fatalf("start source: %v", err)
 	}
 	log.Printf("raw-ledger-source %s listening on %s (health :%d, backend %s)",
-		version, cfg.Endpoint, cfg.HealthPort, beCfg.Type)
+		version, cfg.Endpoint, cfg.HealthPort, streamCfg.Type)
 
 	<-ctx.Done()
 	log.Println("shutting down...")

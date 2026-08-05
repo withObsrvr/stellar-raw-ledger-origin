@@ -39,7 +39,7 @@
             inherit version;
             src = ./.;
             subPackages = [ "processors/raw-ledger-origin/cmd/raw-ledger-origin" ];
-            vendorHash = "sha256-AqX75cU/I8ECirG2Sw6IIuw79r6mCTk14iHPIgBfV4U=";
+            vendorHash = "sha256-KIakdngKUFVmvSrQXNOLlk24dXkAQNgSFl8J2bbPq6Q=";
           };
 
           raw-ledger-source = pkgs.buildGoModule {
@@ -48,7 +48,7 @@
             src = ./.;
             modRoot = "source";
             subPackages = [ "cmd/raw-ledger-source" ];
-            vendorHash = "sha256-B8mA8Gqf/vqGW6k7mKLh1iO+yQnR8AKvk0ECGkAkCwM=";
+            vendorHash = "sha256-uwCHkvYsSAksflEsrm5mytsx8Tb3cNkoQEZj3IBRows=";
           };
 
           default = raw-ledger-origin;

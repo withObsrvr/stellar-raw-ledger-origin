@@ -1,13 +1,9 @@
-// Package backend selects and constructs the upstream Stellar ledger
-// source for the flowctl raw-ledger-source service.
-//
-// All backends satisfy the Stellar SDK's ledgerbackend.LedgerBackend
-// interface, so the producer in cmd/raw-ledger-source is backend-agnostic:
-// it only calls PrepareRange / GetLedger / Close.
-package backend
+// Package ledgerstream constructs raw Stellar ledger streams from runtime
+// configuration. Consumers receive the SDK's LedgerStream directly so range
+// lifecycle, cancellation, and borrowed-XDR semantics have one owner.
+package ledgerstream
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"os"
@@ -20,24 +16,25 @@ import (
 	"github.com/stellar/go-stellar-sdk/support/datastore"
 )
 
-// Type enumerates the supported upstream backends.
+// Type identifies the upstream ledger source.
 type Type string
 
 const (
 	TypeRPC         Type = "RPC"
 	TypeArchive     Type = "ARCHIVE"
 	TypeCaptiveCore Type = "CAPTIVE_CORE"
+
+	defaultLedgersPerFile    = uint32(1)
+	defaultFilesPerPartition = uint32(64000)
 )
 
-// Config is the backend selection + connection configuration.
+// Config is the stream selection and connection configuration.
 type Config struct {
 	Type Type
 
-	// RPC backend.
 	RPCServerURL  string
 	RPCAuthHeader string
 
-	// Archive/datalake backend.
 	ArchiveStorageType string
 	ArchiveBucketName  string
 	ArchivePath        string
@@ -48,7 +45,6 @@ type Config struct {
 	BufferSize         uint32
 	NumWorkers         uint32
 
-	// Captive Core backend.
 	NetworkPassphrase      string
 	HistoryArchiveURLs     []string
 	StellarCoreBinaryPath  string
@@ -56,7 +52,7 @@ type Config struct {
 	CaptiveCoreStoragePath string
 }
 
-// ConfigFromEnv reads backend configuration from the environment.
+// ConfigFromEnv reads stream configuration from the environment.
 //
 //	BACKEND_TYPE          RPC | ARCHIVE | CAPTIVE_CORE (default RPC)
 //	RPC_ENDPOINT          Stellar RPC URL (required for RPC)
@@ -64,13 +60,13 @@ type Config struct {
 //	ARCHIVE_STORAGE_TYPE  GCS | S3 (required for ARCHIVE; STORAGE_TYPE fallback)
 //	ARCHIVE_BUCKET_NAME   bucket name (required for ARCHIVE; BUCKET_NAME fallback)
 //	ARCHIVE_PATH          optional prefix inside the bucket (BUCKET_PATH fallback)
-//	LEDGERS_PER_FILE      archive schema ledgers per file (default 64)
-//	FILES_PER_PARTITION   archive schema files per partition (default 10)
+//	LEDGERS_PER_FILE      archive schema ledgers per file (default 1)
+//	FILES_PER_PARTITION   archive schema files per partition (default 64000)
 //	BUFFER_SIZE           archive read-ahead buffer size (default 5)
 //	NUM_WORKERS           archive worker count (default 2)
 //	AWS_REGION            S3 region (default us-east-1)
 //	S3_ENDPOINT_URL       optional S3-compatible endpoint URL
-//	NETWORK_PASSPHRASE    network passphrase for CAPTIVE_CORE (default pubnet)
+//	NETWORK_PASSPHRASE    network passphrase (default pubnet)
 //	HISTORY_ARCHIVE_URLS  comma-separated archive URLs for CAPTIVE_CORE
 //	STELLAR_CORE_BINARY_PATH  stellar-core binary path for CAPTIVE_CORE
 //	STELLAR_CORE_CONFIG_PATH  optional base stellar-core config file for CAPTIVE_CORE
@@ -93,8 +89,8 @@ func ConfigFromEnv() Config {
 		ArchivePath:            envOr("ARCHIVE_PATH", os.Getenv("BUCKET_PATH")),
 		AWSRegion:              envOr("AWS_REGION", "us-east-1"),
 		S3EndpointURL:          os.Getenv("S3_ENDPOINT_URL"),
-		LedgersPerFile:         envUint32("LEDGERS_PER_FILE", 64),
-		FilesPerPartition:      envUint32("FILES_PER_PARTITION", 10),
+		LedgersPerFile:         envUint32("LEDGERS_PER_FILE", defaultLedgersPerFile),
+		FilesPerPartition:      envUint32("FILES_PER_PARTITION", defaultFilesPerPartition),
 		BufferSize:             envUint32("BUFFER_SIZE", 5),
 		NumWorkers:             envUint32("NUM_WORKERS", 2),
 		NetworkPassphrase:      envOr("NETWORK_PASSPHRASE", network.PublicNetworkPassphrase),
@@ -105,21 +101,23 @@ func ConfigFromEnv() Config {
 	}
 }
 
-// New constructs the configured ledger backend.
-func New(cfg Config) (ledgerbackend.LedgerBackend, error) {
+// New validates cfg and returns a reusable stream. Each RawLedgers invocation
+// owns the underlying backend and tears it down on completion, cancellation,
+// error, or an early break.
+func New(cfg Config) (ledgerbackend.LedgerStream, error) {
 	switch cfg.Type {
 	case TypeRPC:
 		return newRPC(cfg)
 	case TypeArchive:
-		return newArchive(context.Background(), cfg)
+		return newArchive(cfg)
 	case TypeCaptiveCore:
-		return newCaptiveCore(context.Background(), cfg)
+		return newCaptiveCore(cfg)
 	default:
 		return nil, fmt.Errorf("unknown BACKEND_TYPE %q (want RPC, ARCHIVE, or CAPTIVE_CORE)", cfg.Type)
 	}
 }
 
-func newRPC(cfg Config) (ledgerbackend.LedgerBackend, error) {
+func newRPC(cfg Config) (ledgerbackend.LedgerStream, error) {
 	if cfg.RPCServerURL == "" {
 		return nil, fmt.Errorf("RPC backend requires RPC_ENDPOINT")
 	}
@@ -132,33 +130,32 @@ func newRPC(cfg Config) (ledgerbackend.LedgerBackend, error) {
 			Transport: &authTransport{base: http.DefaultTransport, authHeader: cfg.RPCAuthHeader},
 		}
 	}
-	return ledgerbackend.NewRPCLedgerBackend(opts), nil
+	return ledgerbackend.NewRPCStream(opts, nil), nil
 }
 
-func newArchive(ctx context.Context, cfg Config) (ledgerbackend.LedgerBackend, error) {
+func newArchive(cfg Config) (ledgerbackend.LedgerStream, error) {
 	storageType := strings.ToUpper(cfg.ArchiveStorageType)
 	if storageType == "" || cfg.ArchiveBucketName == "" {
 		return nil, fmt.Errorf("ARCHIVE backend requires ARCHIVE_STORAGE_TYPE (or STORAGE_TYPE) and ARCHIVE_BUCKET_NAME (or BUCKET_NAME)")
 	}
-
-	schema := datastore.DataStoreSchema{
-		LedgersPerFile:    cfg.LedgersPerFile,
-		FilesPerPartition: cfg.FilesPerPartition,
-	}
-	if schema.LedgersPerFile == 0 {
+	if cfg.LedgersPerFile == 0 {
 		return nil, fmt.Errorf("LEDGERS_PER_FILE must be > 0")
 	}
-	if schema.FilesPerPartition == 0 {
+	if cfg.FilesPerPartition == 0 {
 		return nil, fmt.Errorf("FILES_PER_PARTITION must be > 0")
+	}
+	if cfg.BufferSize == 0 {
+		return nil, fmt.Errorf("BUFFER_SIZE must be > 0")
+	}
+	if cfg.NumWorkers == 0 {
+		return nil, fmt.Errorf("NUM_WORKERS must be > 0")
 	}
 
 	params := map[string]string{
 		"destination_bucket_path": archiveBucketPath(cfg.ArchiveBucketName, cfg.ArchivePath),
 	}
-	dsType := storageType
 	switch storageType {
 	case "GCS":
-		// destination_bucket_path is enough.
 	case "S3":
 		params["region"] = cfg.AWSRegion
 		if cfg.S3EndpointURL != "" {
@@ -168,37 +165,25 @@ func newArchive(ctx context.Context, cfg Config) (ledgerbackend.LedgerBackend, e
 		return nil, fmt.Errorf("unsupported ARCHIVE_STORAGE_TYPE %q (want GCS or S3)", cfg.ArchiveStorageType)
 	}
 
-	dataStore, err := datastore.NewDataStore(ctx, datastore.DataStoreConfig{
-		Type:   dsType,
-		Schema: schema,
-		Params: params,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("create %s datastore %q: %w", dsType, params["destination_bucket_path"], err)
+	dsConfig := datastore.DataStoreConfig{
+		Type: storageType,
+		Schema: datastore.DataStoreSchema{
+			LedgersPerFile:    cfg.LedgersPerFile,
+			FilesPerPartition: cfg.FilesPerPartition,
+		},
+		Params:            params,
+		NetworkPassphrase: cfg.NetworkPassphrase,
 	}
-
-	bufferSize := cfg.BufferSize
-	if bufferSize == 0 {
-		return nil, fmt.Errorf("BUFFER_SIZE must be > 0")
-	}
-	numWorkers := cfg.NumWorkers
-	if numWorkers == 0 {
-		return nil, fmt.Errorf("NUM_WORKERS must be > 0")
-	}
-	be, err := ledgerbackend.NewBufferedStorageBackend(ledgerbackend.BufferedStorageBackendConfig{
-		BufferSize: bufferSize,
-		NumWorkers: numWorkers,
+	streamConfig := ledgerbackend.BufferedStorageBackendConfig{
+		BufferSize: cfg.BufferSize,
+		NumWorkers: cfg.NumWorkers,
 		RetryLimit: 3,
 		RetryWait:  time.Second,
-	}, dataStore, schema)
-	if err != nil {
-		dataStore.Close()
-		return nil, fmt.Errorf("create buffered storage backend: %w", err)
 	}
-	return be, nil
+	return ledgerbackend.NewBufferedStorageStream(streamConfig, dsConfig, nil), nil
 }
 
-func newCaptiveCore(ctx context.Context, cfg Config) (ledgerbackend.LedgerBackend, error) {
+func newCaptiveCore(cfg Config) (ledgerbackend.LedgerStream, error) {
 	if cfg.StellarCoreBinaryPath == "" {
 		return nil, fmt.Errorf("CAPTIVE_CORE backend requires STELLAR_CORE_BINARY_PATH")
 	}
@@ -214,7 +199,6 @@ func newCaptiveCore(ctx context.Context, cfg Config) (ledgerbackend.LedgerBacken
 		HistoryArchiveURLs: cfg.HistoryArchiveURLs,
 		CoreBinaryPath:     cfg.StellarCoreBinaryPath,
 	}
-
 	var (
 		captiveCoreToml *ledgerbackend.CaptiveCoreToml
 		err             error
@@ -228,15 +212,14 @@ func newCaptiveCore(ctx context.Context, cfg Config) (ledgerbackend.LedgerBacken
 		return nil, fmt.Errorf("create captive core toml: %w", err)
 	}
 
-	return ledgerbackend.NewCaptive(ledgerbackend.CaptiveCoreConfig{
+	return ledgerbackend.NewCaptiveCoreStream(ledgerbackend.CaptiveCoreConfig{
 		BinaryPath:          cfg.StellarCoreBinaryPath,
 		NetworkPassphrase:   cfg.NetworkPassphrase,
 		HistoryArchiveURLs:  cfg.HistoryArchiveURLs,
 		CheckpointFrequency: 64,
 		Toml:                captiveCoreToml,
-		Context:             ctx,
 		StoragePath:         cfg.CaptiveCoreStoragePath,
-	})
+	}, nil), nil
 }
 
 func archiveBucketPath(bucket, prefix string) string {
@@ -260,33 +243,31 @@ func csvList(value string) []string {
 }
 
 func envOr(key, fallback string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
+	if value := os.Getenv(key); value != "" {
+		return value
 	}
 	return fallback
 }
 
 func envUint32(key string, fallback uint32) uint32 {
-	v := os.Getenv(key)
-	if v == "" {
+	value := os.Getenv(key)
+	if value == "" {
 		return fallback
 	}
-	n, err := strconv.ParseUint(v, 10, 32)
+	number, err := strconv.ParseUint(value, 10, 32)
 	if err != nil {
 		return fallback
 	}
-	return uint32(n)
+	return uint32(number)
 }
 
-// authTransport injects a static Authorization header on every RPC
-// request (for authenticated RPC providers).
 type authTransport struct {
 	base       http.RoundTripper
 	authHeader string
 }
 
-func (t *authTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	req = req.Clone(req.Context())
-	req.Header.Set("Authorization", t.authHeader)
-	return t.base.RoundTrip(req)
+func (t *authTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	clone := request.Clone(request.Context())
+	clone.Header.Set("Authorization", t.authHeader)
+	return t.base.RoundTrip(clone)
 }

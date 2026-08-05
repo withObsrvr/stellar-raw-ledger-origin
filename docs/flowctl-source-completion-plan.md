@@ -6,8 +6,11 @@ This is the working list to make `source/cmd/raw-ledger-source` a full replaceme
 
 - `raw-ledger-source` exists in the `source/` Go module.
 - RPC, ARCHIVE, and CAPTIVE_CORE backends build and unit-tests pass.
+- Backend construction is public in `source/ledgerstream` and returns the
+  `go-stellar-sdk v0.7.1` `ledgerbackend.LedgerStream` contract.
 - Service lifecycle is delegated to `flowctl-sdk`.
-- Shared conversion uses `rawledger.ToRawLedger`, same as the nebu origin.
+- The source uses view-backed `rawledger.FromXDR`; the nebu adapter retains
+  parsed `rawledger.ToRawLedger` compatibility.
 
 ## Ordered work
 
@@ -38,7 +41,7 @@ This is the working list to make `source/cmd/raw-ledger-source` a full replaceme
    - Verified locally: `RUN_TIMEOUT=45s scripts/flowctl-registry-e2e.sh` ended by timeout as expected and reported `Registry smoke passed: sink received 100 event(s); cached raw-ledger-source@0.1.0 with metadata type=source produces=stellar.ledger.v1.`
 
 6. **Add ARCHIVE backend** — done.
-   - Ported archive/datalake backend construction into `source/internal/backend` using Stellar SDK `datastore.NewDataStore` plus `ledgerbackend.NewBufferedStorageBackend`.
+   - Archive/datalake construction lives in public package `source/ledgerstream` and uses SDK `ledgerbackend.NewBufferedStorageStream`.
    - Supports `ARCHIVE_STORAGE_TYPE=GCS|S3`, `ARCHIVE_BUCKET_NAME`, optional `ARCHIVE_PATH`, archive schema knobs `LEDGERS_PER_FILE` / `FILES_PER_PARTITION`, and buffering knobs `BUFFER_SIZE` / `NUM_WORKERS`.
    - Supports legacy aliases `STORAGE_TYPE`, `BUCKET_NAME`, and `BUCKET_PATH`; `STORAGE_TYPE=GCS|S3` selects `BACKEND_TYPE=ARCHIVE` when `BACKEND_TYPE` is unset.
    - S3 uses `AWS_REGION` and optional `S3_ENDPOINT_URL`; both GCS and S3 pass a combined `destination_bucket_path` so bucket prefixes work.
@@ -46,7 +49,7 @@ This is the working list to make `source/cmd/raw-ledger-source` a full replaceme
    - Updated `metadata.json` and README config docs with archive env mappings.
 
 7. **Add CAPTIVE_CORE backend** — done.
-   - Ported Captive Core backend construction into `source/internal/backend` using Stellar SDK `ledgerbackend.NewCaptiveCoreToml` / `NewCaptiveCoreTomlFromFile` plus `ledgerbackend.NewCaptive`.
+   - Captive Core construction lives in `source/ledgerstream` and uses SDK `ledgerbackend.NewCaptiveCoreStream`.
    - Supports `STELLAR_CORE_BINARY_PATH`, `HISTORY_ARCHIVE_URLS`, `NETWORK_PASSPHRASE`, optional `STELLAR_CORE_CONFIG_PATH`, and optional `CAPTIVE_CORE_STORAGE_PATH`.
    - Uses checkpoint frequency `64`, matching the old source implementation.
    - Added backend unit tests for Captive Core env parsing, archive URL CSV cleanup, and validation errors.
@@ -123,7 +126,7 @@ Observed test output:
 
 ```text
 ok  	github.com/withObsrvr/stellar-raw-ledger-origin/source/cmd/raw-ledger-source
-ok  	github.com/withObsrvr/stellar-raw-ledger-origin/source/internal/backend
+ok  	github.com/withObsrvr/stellar-raw-ledger-origin/source/ledgerstream
 ```
 
 ## Verification for completed item #7
@@ -141,7 +144,7 @@ Observed test output:
 
 ```text
 ok  	github.com/withObsrvr/stellar-raw-ledger-origin/source/cmd/raw-ledger-source
-ok  	github.com/withObsrvr/stellar-raw-ledger-origin/source/internal/backend
+ok  	github.com/withObsrvr/stellar-raw-ledger-origin/source/ledgerstream
 ```
 
 ## Verification for completed item #9
