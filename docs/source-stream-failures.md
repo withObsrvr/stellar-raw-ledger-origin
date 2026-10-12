@@ -27,14 +27,19 @@ validation; `print-config --redact` prints a restricted, redacted summary, and
 `version --json` prints the binary version. These commands do not claim remote
 archive manifest or upstream connectivity validation. Invalid configuration
 and usage exit 2. The SDK's `/live`, `/ready`, `/health`, and `/metrics` endpoints
-exist, but `/metrics` currently returns SDK JSON rather than Prometheus output;
-last fetched and emitted gauges, diagnostic stream snapshots, and separate
-stall detection remain future work; this release records the last queued ledger
-on terminal errors, not the last ledger the downstream consumer committed.
+on `HEALTH_PORT` remain unchanged; the SDK `/metrics` endpoint is JSON. The
+upcoming `0.2.5` release adds Prometheus `/metrics` and diagnostic `/status` on
+`METRICS_PORT` (default 9095). The counters and snapshot distinguish last
+validated fetched ledger from last **queued** ledger; neither means gRPC
+delivery or durable commit. `/status` shows the active and most recently ended
+stream (no active stream is normal before a request). Metrics never label
+requests, network passphrases, endpoints, ledger numbers, or raw errors. A
+stall watchdog and SDK readiness integration are not implemented; unbounded
+streams idle at tip must not be reported as failed without upstream evidence.
 
 This change requires flowctl-sdk >= v0.1.4 and pins Stellar SDK v0.7.3.
-The proposed component version is 0.2.4; it is **not published** until the
-release commit is tagged and an immutable image digest is recorded. Existing `OnProduce` users retain
+Version 0.2.4 has been published; the additional telemetry and nebu upgrade
+are prepared as 0.2.5 and have not been tagged or deployed. Existing `OnProduce` users retain
 legacy channel-close semantics; rollback is to the previous source binary and
 SDK pin. The flowctl pipeline supervisor still needs its separate forwarding
 error propagation change before source errors reliably fail a *pipeline run*.
@@ -49,5 +54,5 @@ smoke with freshly built flowctl and processor binaries and the public testnet
 RPC passed on 2026-10-12 (bounded 101-ledger request, sink received 101 contract
 events). After bounded completion the current flowctl still reported all three
 components healthy until timeout; flowctl's run-lifecycle fix remains a
-separate repository change. Release tag, image digest, production rollout, and
-operator dashboard remain pending.
+separate repository change. For 0.2.5, release tag, image digest, production
+rollout, and operator dashboard remain pending.

@@ -1,0 +1,52 @@
+name: Publish source image
+on:
+  push:
+    tags:
+      - 'v*'
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    # Configure DOCKERHUB_USERNAME and DOCKERHUB_TOKEN as repository secrets.
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify tagged source release
+        id: verify
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          test "$(jq -r .version metadata.json)" = "$version"
+          test "$(awk '/^  ref: / {print $2; exit}' description.yml)" = "v$version"
+          make packaging-check
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Build and push amd64 release
+        id: push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.flowctl
+          platforms: linux/amd64
+          push: true
+          tags: docker.io/withobsrvr/raw-ledger-source:${{ steps.verify.outputs.version }}
+          provenance: mode=max
+      - uses: sigstore/cosign-installer@v3
+      - uses: anchore/sbom-action/download-syft@v0
+      - name: Sign digest and attest SBOM (keyless OIDC)
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          set -euo pipefail
+          image="docker.io/withobsrvr/raw-ledger-source@${DIGEST}"
+          syft "$image" -o spdx-json=sbom.spdx.json
+          cosign sign --yes "$image"
+          cosign attest --yes --type spdxjson --predicate sbom.spdx.json "$image"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: raw-ledger-source-sbom
+          path: sbom.spdx.json

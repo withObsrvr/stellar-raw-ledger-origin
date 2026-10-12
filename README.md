@@ -124,7 +124,8 @@ go run ./cmd/raw-ledger-source
 | `CAPTIVE_CORE_STORAGE_PATH` | — | optional captive-core bucket storage base path |
 | `NETWORK_PASSPHRASE` | pubnet | network passphrase stamped on events |
 | `START_LEDGER` / `END_LEDGER` | `0` | default range if a stream omits them (`END_LEDGER=0` = unbounded) |
-| `GRPC_PORT` / `HEALTH_PORT` | `50051` / `8088` | listen ports |
+| `GRPC_PORT` / `HEALTH_PORT` | `50051` / `8088` | gRPC and SDK health/JSON metrics ports |
+| `METRICS_PORT` | `9095` | separate Prometheus `/metrics` and source `/status` JSON (last fetched/queued ledger; not a durable cursor) |
 | `FLOWCTL_ENDPOINT` | — | control plane; registration enabled when set |
 | `FLOWCTL_COMPONENT_ID` / `SOURCE_ID` | `raw-ledger-source` | component id; flowctl-injected `FLOWCTL_COMPONENT_ID` wins |
 
@@ -187,7 +188,7 @@ make packaging-check
 # or set FLOWCTL_BIN / FLOWCTL_SDK_DIR / FLOW_PROTO_DIR.
 RUN_TIMEOUT=45s scripts/flowctl-process-e2e.sh
 
-# flowctl registry/image resolver smoke for raw-ledger-source@0.2.4
+# flowctl registry/image resolver smoke for raw-ledger-source@0.2.5
 RUN_TIMEOUT=45s scripts/flowctl-registry-e2e.sh
 ```
 
@@ -195,11 +196,11 @@ The flowctl smokes build `raw-ledger-source`, generate a temporary sink,
 and run `raw-ledger-source -> contract-events-processor -> smoke-sink`
 over testnet RPC. `flowctl run` is long-lived, so a timeout exit is treated
 as success if the sink received at least one event. The registry smoke primes
-flowctl's local OCI cache for `docker.io/withobsrvr/raw-ledger-source:0.2.4`
+flowctl's local OCI cache for `docker.io/withobsrvr/raw-ledger-source:0.2.5`
 and verifies type-reference resolution, image extraction, component caching,
 and metadata-driven config-to-env translation.
 
-Root is built against tagged `github.com/withObsrvr/nebu v0.6.7`; source is
+Root is built against tagged `github.com/withObsrvr/nebu v0.6.15`; source is
 built against `flowctl-sdk v0.1.4` / `flow-proto v0.1.3`. Both modules pin
 `go-stellar-sdk v0.7.3`; the stream and XDR-view APIs are kept behind this
 repository's small public boundary while those SDK APIs remain experimental.
