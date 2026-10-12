@@ -2,12 +2,12 @@
 set -euo pipefail
 
 # Registry/image-path smoke for:
-#   raw-ledger-source@0.1.0 -> contract-events-processor -> smoke sink
+#   raw-ledger-source@0.2.4 -> contract-events-processor -> smoke sink
 #
 # The source is resolved through flowctl's registry component resolver. To keep
 # the smoke local and deterministic, this script pre-populates flowctl's OCI
 # image cache with a docker-built image at the exact cache path the resolver
-# expects for docker.io/withobsrvr/raw-ledger-source:0.1.0. flowctl then
+# expects for docker.io/withobsrvr/raw-ledger-source:0.2.4. flowctl then
 # extracts /app/component and /metadata.json into ~/.flowctl/components and
 # uses metadata env mappings to translate source config.
 
@@ -23,7 +23,7 @@ RUN_TIMEOUT=${RUN_TIMEOUT:-45s}
 LEDGER_COUNT_BACK=${LEDGER_COUNT_BACK:-120}
 LEDGER_COUNT_END_OFFSET=${LEDGER_COUNT_END_OFFSET:-20}
 COMPONENT_NAME=${COMPONENT_NAME:-raw-ledger-source}
-COMPONENT_VERSION=${COMPONENT_VERSION:-0.1.0}
+COMPONENT_VERSION=${COMPONENT_VERSION:-0.2.4}
 COMPONENT_REF=${COMPONENT_REF:-${COMPONENT_NAME}@${COMPONENT_VERSION}}
 IMAGE_REF=${IMAGE_REF:-docker.io/withobsrvr/${COMPONENT_NAME}:${COMPONENT_VERSION}}
 
@@ -81,7 +81,7 @@ module raw-ledger-source-registry-e2e-sink
 
 go 1.26.1
 
-require github.com/withObsrvr/flowctl-sdk v0.1.1
+require github.com/withObsrvr/flowctl-sdk v0.1.4
 
 replace github.com/withObsrvr/flowctl-sdk => $FLOWCTL_SDK_DIR
 replace github.com/withObsrvr/flow-proto => $FLOW_PROTO_DIR

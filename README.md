@@ -36,7 +36,7 @@ The repo is two Go modules so the lean origin stays free of gRPC/flowctl:
   `raw-ledger-origin` binary. No gRPC.
 - **`source/`** (`go 1.26`): the flowctl `raw-ledger-source` service.
   Depends on `flowctl-sdk` + `flow-proto` + gRPC, and on the root module
-  for the shared core (via a relative `replace` during development).
+  for the shared core (pinned to the published root `v0.2.3` tag).
 
 ## Schema
 
@@ -129,7 +129,7 @@ go run ./cmd/raw-ledger-source
 | `FLOWCTL_COMPONENT_ID` / `SOURCE_ID` | `raw-ledger-source` | component id; flowctl-injected `FLOWCTL_COMPONENT_ID` wins |
 
 Container image: `docker build -f Dockerfile.flowctl -t raw-ledger-source .`
-(build context must be the repo root so the `replace => ../` resolves). The
+(build context is the repo root for the metadata and source module). The
 image follows the flowctl resolver layout: executable at `/app/component` and
 component metadata at `/metadata.json`.
 
@@ -187,7 +187,7 @@ make packaging-check
 # or set FLOWCTL_BIN / FLOWCTL_SDK_DIR / FLOW_PROTO_DIR.
 RUN_TIMEOUT=45s scripts/flowctl-process-e2e.sh
 
-# flowctl registry/image resolver smoke for raw-ledger-source@0.1.0
+# flowctl registry/image resolver smoke for raw-ledger-source@0.2.4
 RUN_TIMEOUT=45s scripts/flowctl-registry-e2e.sh
 ```
 
@@ -195,13 +195,13 @@ The flowctl smokes build `raw-ledger-source`, generate a temporary sink,
 and run `raw-ledger-source -> contract-events-processor -> smoke-sink`
 over testnet RPC. `flowctl run` is long-lived, so a timeout exit is treated
 as success if the sink received at least one event. The registry smoke primes
-flowctl's local OCI cache for `docker.io/withobsrvr/raw-ledger-source:0.1.0`
+flowctl's local OCI cache for `docker.io/withobsrvr/raw-ledger-source:0.2.4`
 and verifies type-reference resolution, image extraction, component caching,
 and metadata-driven config-to-env translation.
 
 Root is built against tagged `github.com/withObsrvr/nebu v0.6.7`; source is
-built against `flowctl-sdk v0.1.1` / `flow-proto v0.1.3`. Both modules pin
-`go-stellar-sdk v0.7.1`; the stream and XDR-view APIs are kept behind this
+built against `flowctl-sdk v0.1.4` / `flow-proto v0.1.3`. Both modules pin
+`go-stellar-sdk v0.7.3`; the stream and XDR-view APIs are kept behind this
 repository's small public boundary while those SDK APIs remain experimental.
 
 ## Layout
@@ -218,7 +218,7 @@ processors/raw-ledger-origin/cmd/raw-ledger-origin/    nebu CLI adapter (owns ne
 description.yml                                         nebu external-registry descriptor
 flake.nix / Makefile                                   reproducible build + codegen (root)
 source/                                                flowctl module (go 1.26)
-  go.mod                                                  replace => ../ for the shared core
+  go.mod                                                  pinned root tag for the shared core
   cmd/raw-ledger-source/                                 flowctl adapter (producer + wiring)
   cmd/ledger-stream-bench/                               acquisition-only performance gate
   ledgerstream/                                          public SDK LedgerStream configuration/factory

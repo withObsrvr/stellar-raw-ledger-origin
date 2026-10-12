@@ -2,6 +2,26 @@ package ledgerstream
 
 import "testing"
 
+func TestConfigFromEnvStrict(t *testing.T) {
+	t.Setenv("BACKEND_TYPE", "RPC")
+	t.Setenv("RPC_ENDPOINT", "http://localhost:8000")
+	if _, err := ConfigFromEnvStrict(); err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{"LEDGERS_PER_FILE", "FILES_PER_PARTITION", "BUFFER_SIZE", "NUM_WORKERS"} {
+		t.Run(key, func(t *testing.T) {
+			t.Setenv(key, "fast")
+			if _, err := ConfigFromEnvStrict(); err == nil {
+				t.Fatal("invalid numeric value accepted")
+			}
+		})
+	}
+	t.Setenv("BACKEND_TYPE", "typo")
+	if _, err := ConfigFromEnvStrict(); err == nil {
+		t.Fatal("unknown backend accepted")
+	}
+}
+
 func TestConfigFromEnvArchiveDefaults(t *testing.T) {
 	t.Setenv("BACKEND_TYPE", "archive")
 	t.Setenv("ARCHIVE_STORAGE_TYPE", "gcs")

@@ -31,7 +31,7 @@
       # `nix build .#raw-ledger-source` -> the flowctl source service.
       packages = forAllSystems (pkgs:
         let
-          version = "0.1.0";
+          version = "0.2.4";
         in
         rec {
           raw-ledger-origin = pkgs.buildGoModule {
@@ -39,7 +39,7 @@
             inherit version;
             src = ./.;
             subPackages = [ "processors/raw-ledger-origin/cmd/raw-ledger-origin" ];
-            vendorHash = "sha256-KIakdngKUFVmvSrQXNOLlk24dXkAQNgSFl8J2bbPq6Q=";
+            vendorHash = "sha256-gbASrtK7QyyD8aR9SGiPNptUsoE6jYi+M6KqJRsFT3M=";
           };
 
           raw-ledger-source = pkgs.buildGoModule {
@@ -48,7 +48,7 @@
             src = ./.;
             modRoot = "source";
             subPackages = [ "cmd/raw-ledger-source" ];
-            vendorHash = "sha256-uwCHkvYsSAksflEsrm5mytsx8Tb3cNkoQEZj3IBRows=";
+            vendorHash = "sha256-TdRdlOVtiVgkeElyPsfiXp+xS0CqyQLe1bO1ce0hWOc=";
           };
 
           default = raw-ledger-origin;

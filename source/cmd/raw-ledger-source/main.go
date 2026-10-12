@@ -38,7 +38,10 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 	"strconv"
@@ -49,13 +52,72 @@ import (
 	"github.com/withObsrvr/stellar-raw-ledger-origin/source/ledgerstream"
 )
 
-const version = "0.1.0"
+const version = "0.2.4"
 
 func main() {
-	streamCfg := ledgerstream.ConfigFromEnv()
+	command := "run"
+	if len(os.Args) > 1 {
+		command = os.Args[1]
+	}
+	if command == "version" && len(os.Args) == 3 && os.Args[2] == "--json" {
+		_ = json.NewEncoder(os.Stdout).Encode(map[string]string{"component": "raw-ledger-source", "version": version})
+		return
+	}
+	if command != "run" && command != "validate-config" && command != "print-config" {
+		fmt.Fprintln(os.Stderr, "usage: raw-ledger-source [run|validate-config|print-config --redact|version --json]")
+		os.Exit(2)
+	}
+	if command == "print-config" && (len(os.Args) != 3 || os.Args[2] != "--redact") || (command != "print-config" && len(os.Args) > 2) {
+		fmt.Fprintln(os.Stderr, "invalid arguments")
+		os.Exit(2)
+	}
+	streamCfg, err := ledgerstream.ConfigFromEnvStrict()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
+	for _, key := range []string{"START_LEDGER", "END_LEDGER", "HEALTH_PORT"} {
+		if value, ok := os.LookupEnv(key); ok {
+			if _, err := strconv.ParseUint(value, 10, 32); err != nil {
+				fmt.Fprintf(os.Stderr, "%s must be a uint32\n", key)
+				os.Exit(2)
+			}
+		}
+	}
 	defStart := envUint32("START_LEDGER", 0)
 	defEnd := envUint32("END_LEDGER", 0)
+	if value, ok := os.LookupEnv("GRPC_PORT"); ok {
+		port, err := strconv.ParseUint(value, 10, 16)
+		if err != nil || port == 0 {
+			fmt.Fprintln(os.Stderr, "GRPC_PORT must be between 1 and 65535")
+			os.Exit(2)
+		}
+	}
+	if port := envUint32("HEALTH_PORT", 8088); port == 0 || port > 65535 {
+		fmt.Fprintln(os.Stderr, "HEALTH_PORT must be between 1 and 65535")
+		os.Exit(2)
+	}
+	if _, err := rangeFromParams(nil, defStart, defEnd); err != nil && defStart != 0 {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
+	if command == "validate-config" {
+		fmt.Println("configuration valid (connectivity not checked)")
+		return
+	}
+	if command == "print-config" {
+		_ = json.NewEncoder(os.Stdout).Encode(map[string]interface{}{
+			"backend": streamCfg.Type, "start_ledger": defStart, "end_ledger": defEnd,
+			"network": streamCfg.NetworkPassphrase, "endpoint": "[redacted]", "credentials": "[redacted]",
+		})
+		return
+	}
 
+	if os.Getenv("LOG_FORMAT") == "text" {
+		slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, nil)))
+	} else {
+		slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stderr, nil)))
+	}
 	cfg := source.DefaultConfig()
 	cfg.ID = componentIDFromEnv()
 	cfg.Name = "raw-ledger-source"
@@ -77,7 +139,7 @@ func main() {
 		log.Fatalf("create source: %v", err)
 	}
 
-	if err := src.OnProduce(newProducer(streamCfg, streamCfg.NetworkPassphrase, cfg.ID, defStart, defEnd)); err != nil {
+	if err := src.OnProduceStream(newProducer(streamCfg, streamCfg.NetworkPassphrase, cfg.ID, defStart, defEnd)); err != nil {
 		log.Fatalf("register producer: %v", err)
 	}
 

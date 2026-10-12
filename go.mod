@@ -3,7 +3,7 @@ module github.com/withObsrvr/stellar-raw-ledger-origin
 go 1.25.4
 
 require (
-	github.com/stellar/go-stellar-sdk v0.7.1
+	github.com/stellar/go-stellar-sdk v0.7.3
 	github.com/withObsrvr/nebu v0.6.7
 	google.golang.org/protobuf v1.36.11
 )
@@ -79,7 +79,7 @@ require (
 	github.com/spf13/cobra v1.10.2 // indirect
 	github.com/spf13/pflag v1.0.9 // indirect
 	github.com/spiffe/go-spiffe/v2 v2.6.0 // indirect
-	github.com/stellar/go-xdr v0.0.0-20260529210834-0bf8f4956364 // indirect
+	github.com/stellar/go-xdr v0.0.0-20260806060815-dc590f17552a // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
 	github.com/stretchr/testify v1.11.1 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
