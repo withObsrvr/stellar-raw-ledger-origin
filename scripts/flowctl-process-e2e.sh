@@ -54,7 +54,7 @@ module raw-ledger-source-e2e-sink
 
 go 1.26.1
 
-require github.com/withObsrvr/flowctl-sdk v0.1.1
+require github.com/withObsrvr/flowctl-sdk v0.1.4
 
 replace github.com/withObsrvr/flowctl-sdk => $FLOWCTL_SDK_DIR
 replace github.com/withObsrvr/flow-proto => $FLOW_PROTO_DIR

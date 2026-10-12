@@ -18,12 +18,15 @@ description_version=$(awk '/^  version: / {print $2; exit}' description.yml)
 flake_version=$(grep -E '^[[:space:]]*version = "[0-9]+\.[0-9]+\.[0-9]+";' flake.nix | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
 docker_version=$(grep -E 'LABEL org.opencontainers.image.version=' Dockerfile.flowctl | sed -E 's/.*="([^"]+)".*/\1/')
 root_require_version=$(awk '$1 == "github.com/withObsrvr/stellar-raw-ledger-origin" {print $2; exit}' source/go.mod | sed 's/^v//')
+binary_version=$(grep -E '^const version = "[0-9]+\.[0-9]+\.[0-9]+"' source/cmd/raw-ledger-source/main.go | sed -E 's/.*"([^\"]+)"/\1/')
+description_ref=$(awk '/^  ref: / {print $2; exit}' description.yml)
 
 component_versions=(
   "metadata.json:$metadata_version"
   "description.yml:$description_version"
   "flake.nix:$flake_version"
   "Dockerfile.flowctl:$docker_version"
+  "source/cmd/raw-ledger-source/main.go:$binary_version"
 )
 
 want="$metadata_version"
@@ -37,6 +40,15 @@ for entry in "${component_versions[@]}"; do
     exit 1
   fi
 done
+
+if [[ "$description_ref" != "v$want" ]]; then
+  echo "description.yml ref $description_ref does not match v$want" >&2
+  exit 1
+fi
+if grep -Eq '^replace github.com/withObsrvr/stellar-raw-ledger-origin => \.\./' source/go.mod; then
+  echo 'source/go.mod must not contain a relative root replace for release' >&2
+  exit 1
+fi
 
 if [[ -z "$root_require_version" ]]; then
   echo "missing root module requirement in source/go.mod" >&2

@@ -3,10 +3,12 @@ module github.com/withObsrvr/stellar-raw-ledger-origin/source
 go 1.26.1
 
 require (
-	github.com/stellar/go-stellar-sdk v0.7.1
+	github.com/google/uuid v1.6.0
+	github.com/stellar/go-stellar-sdk v0.7.3
 	github.com/withObsrvr/flow-proto v0.1.3
-	github.com/withObsrvr/flowctl-sdk v0.1.1
-	github.com/withObsrvr/stellar-raw-ledger-origin v0.2.0
+	github.com/withObsrvr/flowctl-sdk v0.1.4
+	github.com/withObsrvr/stellar-raw-ledger-origin v0.2.3
+	google.golang.org/grpc v1.80.0
 	google.golang.org/protobuf v1.36.11
 )
 
@@ -59,7 +61,6 @@ require (
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/google/s2a-go v0.1.9 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.14 // indirect
 	github.com/googleapis/gax-go/v2 v2.21.0 // indirect
 	github.com/hashicorp/golang-lru v1.0.2 // indirect
@@ -77,7 +78,7 @@ require (
 	github.com/segmentio/go-loggly v0.5.1-0.20171222203950-eb91657e62b2 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/spiffe/go-spiffe/v2 v2.6.0 // indirect
-	github.com/stellar/go-xdr v0.0.0-20260529210834-0bf8f4956364 // indirect
+	github.com/stellar/go-xdr v0.0.0-20260806060815-dc590f17552a // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
 	github.com/stretchr/testify v1.11.1 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
@@ -102,14 +103,7 @@ require (
 	google.golang.org/genproto v0.0.0-20260319201613-d00831a3d3e7 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260406210006-6f92a3bedf2d // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260406210006-6f92a3bedf2d // indirect
-	google.golang.org/grpc v1.80.0 // indirect
 	gopkg.in/djherbis/atime.v1 v1.0.0 // indirect
 	gopkg.in/djherbis/stream.v1 v1.3.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-// The shared core (rawledger + gen) lives in the parent module. During
-// development it is consumed from the local checkout; switch this to a
-// tagged require (>= the tag that moved rawledger out of internal/)
-// before publishing the source module independently.
-replace github.com/withObsrvr/stellar-raw-ledger-origin => ../

@@ -1,13 +1,12 @@
 # Build the flowctl raw-ledger-source service.
 #
-# The source module (./source) consumes the shared core from the parent
-# module via a relative `replace`, so the build context MUST be the repo
-# root (docker build -f Dockerfile.flowctl .), not ./source.
+# Build from the repo root (docker build -f Dockerfile.flowctl .).
+# source/go.mod pins the tagged shared core for reproducible standalone builds.
 
 FROM golang:1.26 AS build
 WORKDIR /src
 
-# Copy the whole repo so the source module's `replace => ../` resolves.
+# Include metadata alongside the source module.
 COPY . .
 
 WORKDIR /src/source
@@ -16,7 +15,7 @@ RUN CGO_ENABLED=1 go build -o /out/raw-ledger-source ./cmd/raw-ledger-source
 FROM gcr.io/distroless/base-debian12
 
 LABEL org.opencontainers.image.title="raw-ledger-source"
-LABEL org.opencontainers.image.version="0.1.0"
+LABEL org.opencontainers.image.version="0.2.4"
 LABEL org.opencontainers.image.source="https://github.com/withObsrvr/stellar-raw-ledger-origin"
 LABEL org.opencontainers.image.description="Flowctl source for raw Stellar ledgers"
 LABEL org.opencontainers.image.licenses="Apache-2.0"

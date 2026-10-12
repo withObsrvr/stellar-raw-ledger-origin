@@ -1,6 +1,6 @@
 {
   "name": "raw-ledger-source",
-  "version": "0.1.0",
+  "version": "0.2.4",
   "type": "source",
   "description": "Streams raw Stellar ledgers as stellar.v1.RawLedger protobuf events",
   "produces": ["stellar.ledger.v1"],
