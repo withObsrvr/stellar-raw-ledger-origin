@@ -4,7 +4,7 @@ go 1.25.4
 
 require (
 	github.com/stellar/go-stellar-sdk v0.7.3
-	github.com/withObsrvr/nebu v0.6.7
+	github.com/withObsrvr/nebu v0.6.15
 	google.golang.org/protobuf v1.36.11
 )
 
@@ -97,7 +97,8 @@ require (
 	golang.org/x/net v0.53.0 // indirect
 	golang.org/x/oauth2 v0.36.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
-	golang.org/x/sys v0.43.0 // indirect
+	golang.org/x/sys v0.47.0 // indirect
+	golang.org/x/term v0.45.0 // indirect
 	golang.org/x/text v0.36.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
 	google.golang.org/api v0.275.0 // indirect

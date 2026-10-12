@@ -81,8 +81,8 @@ func toEvent(raw *pb.RawLedger, componentID string) (*flowctlv1.Event, error) {
 // newProducer returns the error-aware flowctl producer. Each request consumes its range
 // through a LedgerStream, converts the borrowed XDR with zero-copy views, and
 // marshals it into a self-contained flowctl Event before advancing the stream.
-func newProducer(streamCfg ledgerstream.Config, networkPassphrase, componentID string, defStart, defEnd uint32) source.ProducerStreamFunc {
-	return newProducerWithFactory(streamCfg, networkPassphrase, componentID, defStart, defEnd, ledgerstream.New)
+func newProducer(streamCfg ledgerstream.Config, networkPassphrase, componentID string, defStart, defEnd uint32, monitor *streamMonitor) source.ProducerStreamFunc {
+	return newProducerWithMonitor(streamCfg, networkPassphrase, componentID, defStart, defEnd, ledgerstream.New, monitor)
 }
 
 // A successful send means queued for the SDK, not yet delivered to the client;
@@ -91,7 +91,7 @@ func newProducer(streamCfg ledgerstream.Config, networkPassphrase, componentID s
 // protobuf messages rarely fail to marshal without a deliberately bad value.
 type eventEncoder func(*pb.RawLedger, string) (*flowctlv1.Event, error)
 
-func produceLedgersWithEncoder(ctx context.Context, stream ledgerbackend.LedgerStream, requestedRange ledgerbackend.Range, lr ledgerRange, network, componentID string, backend ledgerstream.Type, out chan<- *flowctlv1.Event, encode eventEncoder, streamID string) error {
+func produceLedgersWithEncoder(ctx context.Context, stream ledgerbackend.LedgerStream, requestedRange ledgerbackend.Range, lr ledgerRange, network, componentID string, backend ledgerstream.Type, out chan<- *flowctlv1.Event, encode eventEncoder, streamID string, monitor *streamMonitor) error {
 	expected := lr.start
 	lastEmitted := uint32(0)
 	log := slog.With("component", componentID, "stream_id", streamID, "backend", backend,
@@ -116,6 +116,9 @@ func produceLedgersWithEncoder(ctx context.Context, stream ledgerbackend.LedgerS
 		if err != nil {
 			return failure(source.DataIntegrity, "decode ledger XDR", err)
 		}
+		if monitor != nil {
+			monitor.fetch(streamID, raw.GetSequence())
+		}
 		if raw.GetSequence() != expected {
 			return failure(source.DataIntegrity, "ledger_gap", fmt.Errorf("got sequence %d, want %d", raw.GetSequence(), expected))
 		}
@@ -129,6 +132,9 @@ func produceLedgersWithEncoder(ctx context.Context, stream ledgerbackend.LedgerS
 		case out <- ev:
 		}
 		lastEmitted = expected
+		if monitor != nil {
+			monitor.queue(streamID, lastEmitted)
+		}
 		if expected != ^uint32(0) {
 			expected++
 		}
@@ -148,13 +154,18 @@ func produceLedgersWithEncoder(ctx context.Context, stream ledgerbackend.LedgerS
 
 type ledgerStreamFactory func(ledgerstream.Config) (ledgerbackend.LedgerStream, error)
 
-func newProducerWithFactory(
+func newProducerWithFactory(streamCfg ledgerstream.Config, networkPassphrase, componentID string, defStart, defEnd uint32, newStream ledgerStreamFactory) source.ProducerStreamFunc {
+	return newProducerWithMonitor(streamCfg, networkPassphrase, componentID, defStart, defEnd, newStream, nil)
+}
+
+func newProducerWithMonitor(
 	streamCfg ledgerstream.Config,
 	networkPassphrase string,
 	componentID string,
 	defStart uint32,
 	defEnd uint32,
 	newStream ledgerStreamFactory,
+	monitor *streamMonitor,
 ) source.ProducerStreamFunc {
 	return func(ctx context.Context, req *flowctlv1.StreamRequest) (*source.ProducerStream, error) {
 		var params map[string]string
@@ -184,10 +195,17 @@ func newProducerWithFactory(
 		out := make(chan *flowctlv1.Event, 100)
 		result := make(chan error, 1)
 		streamID := uuid.NewString()
+		if monitor != nil {
+			monitor.start(streamID, componentID, streamCfg.Type, lr)
+		}
 		go func() {
 			// The SDK drains buffered events before reading Result. Publishing the
 			// single terminal result before closing Events makes EOF unambiguous.
-			result <- produceLedgersWithEncoder(ctx, stream, requestedRange, lr, networkPassphrase, componentID, streamCfg.Type, out, toEvent, streamID)
+			terminal := produceLedgersWithEncoder(ctx, stream, requestedRange, lr, networkPassphrase, componentID, streamCfg.Type, out, toEvent, streamID, monitor)
+			if monitor != nil {
+				monitor.finish(streamID, terminal)
+			}
+			result <- terminal
 			close(out)
 		}()
 

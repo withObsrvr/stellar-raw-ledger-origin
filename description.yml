@@ -15,7 +15,7 @@ processor:
   name: raw-ledger-origin
   type: origin
   description: Emit raw Stellar LedgerCloseMeta XDR as JSONL events
-  version: 0.2.4
+  version: 0.2.5
   language: Go
   license: Apache-2.0
   maintainers:
@@ -23,7 +23,7 @@ processor:
 
 repo:
   github: withObsrvr/stellar-raw-ledger-origin
-  ref: v0.2.4
+  ref: v0.2.5
 
 schema:
   version: v1

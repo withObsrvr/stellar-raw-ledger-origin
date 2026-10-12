@@ -1,6 +1,6 @@
 {
   "name": "raw-ledger-source",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "type": "source",
   "description": "Streams raw Stellar ledgers as stellar.v1.RawLedger protobuf events",
   "produces": ["stellar.ledger.v1"],
@@ -30,6 +30,7 @@
     "end_ledger": { "env": "END_LEDGER" },
     "grpc_port": { "env": "GRPC_PORT" },
     "health_port": { "env": "HEALTH_PORT" },
+    "metrics_port": { "env": "METRICS_PORT" },
     "flowctl_endpoint": { "env": "FLOWCTL_ENDPOINT" },
     "flowctl_component_id": { "env": "FLOWCTL_COMPONENT_ID" },
     "source_id": { "env": "SOURCE_ID" }
@@ -59,6 +60,7 @@
     "end_ledger": "END_LEDGER",
     "grpc_port": "GRPC_PORT",
     "health_port": "HEALTH_PORT",
+    "metrics_port": "METRICS_PORT",
     "flowctl_endpoint": "FLOWCTL_ENDPOINT",
     "flowctl_component_id": "FLOWCTL_COMPONENT_ID",
     "source_id": "SOURCE_ID"

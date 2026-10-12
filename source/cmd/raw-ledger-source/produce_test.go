@@ -330,7 +330,7 @@ func TestFinalLedgerEncodingFailure(t *testing.T) {
 				return nil, encodingFailure
 			}
 			return toEvent(raw, id)
-		}, "injected-stream")
+		}, "injected-stream", nil)
 	var classified *source.StreamError
 	if !errors.As(err, &classified) || classified.Kind != source.Internal || !errors.Is(err, encodingFailure) {
 		t.Fatalf("encoding error = %v", err)
@@ -349,7 +349,7 @@ func TestTerminalLogContextDoesNotLeakUpstreamError(t *testing.T) {
 	stream := scriptedStream{[]streamItem{{xdr: sourceFixtureLedgerXDR(t, 100, 1700000000)}, {err: errors.New(secret)}}}
 	out := make(chan *flowctlv1.Event, 2)
 	if err := produceLedgersWithEncoder(context.Background(), stream, ledgerbackend.BoundedRange(100, 101),
-		ledgerRange{start: 100, end: 101}, "net", "source", ledgerstream.TypeArchive, out, toEvent, "stream-123"); err == nil {
+		ledgerRange{start: 100, end: 101}, "net", "source", ledgerstream.TypeArchive, out, toEvent, "stream-123", nil); err == nil {
 		t.Fatal("expected upstream error")
 	}
 	if strings.Contains(logs.String(), secret) {

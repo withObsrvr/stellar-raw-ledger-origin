@@ -1,33 +1,45 @@
-# Release / packaging notes
+# Release and packaging
 
-Prepared component version: `0.2.4` (not published until the release commit,
-tag, and image push). The repository's existing root `v0.2.3` tag contains
-the exported `rawledger/` and `gen/` packages; `source/go.mod` pins it without
-a relative replacement, so source builds do not require a parent checkout.
-Root and source Go modules both use Stellar SDK `v0.7.3`; the source uses
-flowctl-sdk `v0.1.4`.
+## Published release
+
+`v0.2.4` and `source/v0.2.4` point at `9e35130`. The Linux/amd64 image
+`docker.io/withobsrvr/raw-ledger-source:0.2.4` is published at
+`docker.io/withobsrvr/raw-ledger-source@sha256:16828cdbd3c612b0c0528862375c690407f516c6f640b6bd737301b6834f67f0`.
+It was not signed. Deploy by digest, not `latest`. Do not treat a locally built
+image for the next version as an update to that immutable release.
+
+## Next release (prepared, not published)
+
+Component version `0.2.5` adds source-side progress telemetry and upgrades
+nebu to `v0.6.15`. Both Go modules use Stellar SDK `v0.7.3`; source uses
+flowctl-sdk `v0.1.4`. Source pins the existing root `v0.2.3` tag for the
+shared `rawledger/` and `gen/` packages and does not need a local replace.
+Base images are pinned by index digest in `Dockerfile.flowctl`. Refresh these
+explicitly with security review, tests, and a *new version*; never change an
+existing release tag in place.
 
 Keep `description.yml` (`processor.version` and `repo.ref`), `metadata.json`,
-`Dockerfile.flowctl`, `flake.nix`, and the binary version in sync. Before
-publishing, run:
+`Dockerfile.flowctl`, `flake.nix`, and the binary version in sync. Run:
 
 ```bash
 go test ./... && go vet ./...
 (cd source && go test ./... && go vet ./... && go build ./...)
 make packaging-check
-nix build .#raw-ledger-origin
-nix build .#raw-ledger-source
+nix build .#raw-ledger-origin --no-link
+nix build .#raw-ledger-source --no-link
 ```
 
-After review and merge, tag the resulting root commit `v0.2.4` and the nested
-Go module `source/v0.2.4` (after checking both tag names are unused). Build and
-push `docker.io/withobsrvr/raw-ledger-source:0.2.4`, record its immutable digest,
-then deploy by digest, not `latest`. Do not claim the new component released
-until the tag and image exist. Roll back to the previously deployed digest;
-consumers resume from their own durable checkpoint. The source does not own a
-checkpoint and does not replay automatically.
+After merge, configure repository secrets `DOCKERHUB_USERNAME` and
+`DOCKERHUB_TOKEN` for `.github/workflows/publish-source.yml`. Create the root
+tag `v0.2.5` and nested Go-module tag `source/v0.2.5` on the same commit (if
+unused). The root tag triggers the workflow to publish an amd64 image under
+`docker.io/withobsrvr/raw-ledger-source:0.2.5`, produce an SPDX SBOM, and
+keylessly sign/attest the digest. Verify the workflow, record the **remote**
+manifest digest, and test the image by digest before deployment. Neither the `0.2.5`
+tag nor its image or signature exists yet. Do not modify or push `0.2.4` again.
 
-`raw-ledger-source` requires flowctl-sdk >= `v0.1.4` for error-aware streams.
-The current flowctl supervisor does not yet mark a pipeline failed on source
-stream errors; deploy the corresponding flowctl change before relying on
-pipeline-level failure status. No flow-proto change is needed for this release.
+Roll back to the previously deployed image digest; consumers resume from their
+own durable checkpoint. The source does not own a checkpoint and does not
+replay automatically. The current flowctl supervisor does not yet mark a
+pipeline failed on source stream errors; deploy the separate flowctl fix before
+relying on pipeline-level failure status. No flow-proto change is needed.

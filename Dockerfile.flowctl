@@ -3,7 +3,7 @@
 # Build from the repo root (docker build -f Dockerfile.flowctl .).
 # source/go.mod pins the tagged shared core for reproducible standalone builds.
 
-FROM golang:1.26 AS build
+FROM docker.io/library/golang:1.26@sha256:d7722066f0b60ceccb6c0643cbed1f5f9e15506ac237146c95333504d7805d89 AS build
 WORKDIR /src
 
 # Include metadata alongside the source module.
@@ -12,10 +12,10 @@ COPY . .
 WORKDIR /src/source
 RUN CGO_ENABLED=1 go build -o /out/raw-ledger-source ./cmd/raw-ledger-source
 
-FROM gcr.io/distroless/base-debian12
+FROM gcr.io/distroless/base-debian12@sha256:fabbf1c0c357a3d42550111351daed089b20a2c954df13ee2fcff60602515e84
 
 LABEL org.opencontainers.image.title="raw-ledger-source"
-LABEL org.opencontainers.image.version="0.2.4"
+LABEL org.opencontainers.image.version="0.2.5"
 LABEL org.opencontainers.image.source="https://github.com/withObsrvr/stellar-raw-ledger-origin"
 LABEL org.opencontainers.image.description="Flowctl source for raw Stellar ledgers"
 LABEL org.opencontainers.image.licenses="Apache-2.0"
@@ -27,8 +27,8 @@ LABEL io.flowctl.component.capabilities="streaming,realtime,stellar"
 COPY --from=build /out/raw-ledger-source /app/component
 COPY metadata.json /metadata.json
 
-# gRPC + health ports (override via GRPC_PORT / HEALTH_PORT).
-EXPOSE 50051 8088
+# gRPC, SDK health, and source Prometheus/status ports.
+EXPOSE 50051 8088 9095
 
 ENV BACKEND_TYPE=RPC
 ENTRYPOINT ["/app/component"]

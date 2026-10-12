@@ -30,7 +30,8 @@
 //	START_LEDGER        default start ledger if a stream omits start_ledger
 //	END_LEDGER          default end ledger (0 = unbounded)
 //	GRPC_PORT           gRPC listen port (default 50051)
-//	HEALTH_PORT         health endpoint port (default 8088)
+//	HEALTH_PORT         SDK health and JSON metrics port (default 8088)
+//	METRICS_PORT        source Prometheus /metrics and /status port (default 9095)
 //	FLOWCTL_ENDPOINT      control plane address; if set, registration is enabled
 //	FLOWCTL_COMPONENT_ID  flowctl-assigned component id (preferred)
 //	SOURCE_ID             component id fallback (default raw-ledger-source)
@@ -52,7 +53,7 @@ import (
 	"github.com/withObsrvr/stellar-raw-ledger-origin/source/ledgerstream"
 )
 
-const version = "0.2.4"
+const version = "0.2.5"
 
 func main() {
 	command := "run"
@@ -97,6 +98,11 @@ func main() {
 		fmt.Fprintln(os.Stderr, "HEALTH_PORT must be between 1 and 65535")
 		os.Exit(2)
 	}
+	metricsPort, err := strconv.ParseUint(envOr("METRICS_PORT", "9095"), 10, 16)
+	if err != nil || metricsPort == 0 || metricsPort == uint64(envUint32("HEALTH_PORT", 8088)) || metricsPort == uint64(envUint32("GRPC_PORT", 50051)) {
+		fmt.Fprintln(os.Stderr, "METRICS_PORT must be a distinct port between 1 and 65535")
+		os.Exit(2)
+	}
 	if _, err := rangeFromParams(nil, defStart, defEnd); err != nil && defStart != 0 {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(2)
@@ -139,12 +145,19 @@ func main() {
 		log.Fatalf("create source: %v", err)
 	}
 
-	if err := src.OnProduceStream(newProducer(streamCfg, streamCfg.NetworkPassphrase, cfg.ID, defStart, defEnd)); err != nil {
+	monitor := newStreamMonitor()
+	if err := src.OnProduceStream(newProducer(streamCfg, streamCfg.NetworkPassphrase, cfg.ID, defStart, defEnd, monitor)); err != nil {
 		log.Fatalf("register producer: %v", err)
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+
+	telemetryServer, err := monitor.serve(uint16(metricsPort))
+	if err != nil {
+		log.Fatalf("start source telemetry: %v", err)
+	}
+	defer telemetryServer.Shutdown(context.Background())
 
 	if err := src.Start(ctx); err != nil {
 		log.Fatalf("start source: %v", err)
